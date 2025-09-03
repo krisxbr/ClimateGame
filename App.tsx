@@ -1,5 +1,5 @@
 import React, { useReducer, useCallback, useMemo, useState, useEffect } from 'react';
-import { GameState, Player, Scenario, Action, Choice, Answer, GameStatus, Achievement } from './gameData';
+import { GameState, Player, Scenario, Action, Choice, Answer, GameStatus, Achievement, Fact } from './gameData';
 import { SCENARIOS, INITIAL_STATE, ICONS, C_LEVEL_STYLES, ACHIEVEMENTS, AVATARS, INDIVIDUAL_SCORING, TEMP_SCORING } from './gameData';
 import { generateConsequences } from './services/geminiService';
 
@@ -320,6 +320,49 @@ const AchievementBadge: React.FC<{ achievement: Achievement, delay: number }> = 
     </div>
 );
 
+const PlayerResultCard: React.FC<{ player: Player, index: number }> = ({ player, index }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    return (
+        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl shadow-lg flex flex-col animate-enter" style={{animationDelay: `${400 + index * 100}ms`}}>
+            <div className="flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                    <span className="text-6xl">{player.avatar}</span>
+                    <div>
+                        <h4 className="text-2xl font-bold text-slate-800">{player.name}</h4>
+                        <CLevelBadge level={player.cLevel} />
+                    </div>
+                </div>
+                <div className="text-right">
+                    <p className="text-md text-slate-500 font-semibold">Round Score</p>
+                    <p className="font-bold text-3xl text-slate-700 mb-1">{player.score}</p>
+                    <p className="font-bold text-2xl text-amber-500 flex items-center justify-end gap-1.5">{ICONS.token} {player.tokens}</p>
+                </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-slate-200">
+                 <button onClick={() => setIsExpanded(!isExpanded)} className="font-bold text-lg text-violet-600 hover:underline flex items-center gap-2">
+                    💡 Why it Matters {isExpanded ? '▲' : '▼'}
+                </button>
+                {isExpanded && (
+                    <div className="mt-4 space-y-4">
+                        {player.answers.map((answer, i) => {
+                            const question = player.questions?.find(q => q.id === answer.questionId);
+                            if (!question || !question.fact) return null;
+                            return (
+                                <div key={i} className="bg-slate-100/70 p-4 rounded-lg">
+                                    <p className="font-semibold text-slate-600">You chose: <span className="font-normal">"{answer.choice.text}"</span></p>
+                                    <p className="mt-2 text-slate-800"><span className="font-bold">Fact:</span> {question.fact.text}</p>
+                                    <a href={question.fact.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold hover:underline">Source →</a>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const ReportModal: React.FC<{ report: string; onClose: () => void }> = ({ report, onClose }) => (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
         <div className="bg-white/80 backdrop-blur-2xl border border-white/50 rounded-3xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto animate-pop-in" onClick={e => e.stopPropagation()}>
@@ -346,6 +389,19 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
     useEffect(() => {
         dispatch({ type: 'CALCULATE_RESULTS' });
     }, [dispatch]);
+    
+    // Effect to handle body scroll lock when modal is open
+    useEffect(() => {
+        if (showModal) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        // Cleanup function to reset scroll on component unmount
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [showModal]);
 
     const allPlayerChoices = useMemo(() => state.players.flatMap(p => 
         p.answers.map(ans => ({
@@ -401,20 +457,7 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
                         </div>
                     )}
                     {state.players.map((player, i) => (
-                        <div key={player.id} className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl shadow-lg flex justify-between items-center animate-enter" style={{animationDelay: `${400 + i * 100}ms`}}>
-                            <div className="flex items-center gap-4">
-                                <span className="text-6xl">{player.avatar}</span>
-                                <div>
-                                    <h4 className="text-2xl font-bold text-slate-800">{player.name}</h4>
-                                    <CLevelBadge level={player.cLevel} />
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-md text-slate-500 font-semibold">Round Score</p>
-                                <p className="font-bold text-3xl text-slate-700 mb-1">{player.score}</p>
-                                <p className="font-bold text-2xl text-amber-500 flex items-center justify-end gap-1.5">{ICONS.token} {player.tokens}</p>
-                            </div>
-                        </div>
+                        <PlayerResultCard key={player.id} player={player} index={i} />
                     ))}
                      <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-xl animate-enter" style={{animationDelay: '800ms'}}>
                         <h3 className="text-2xl font-bold text-violet-600 mb-3">AI Eco-Report</h3>
@@ -464,7 +507,7 @@ export default function App() {
           {state.status !== GameStatus.LOBBY && <button onClick={() => dispatch({type: 'RESTART'})} className="bg-white hover:bg-slate-100 text-slate-700 font-bold py-3 px-5 rounded-lg transition duration-300 border border-slate-200 shadow-md hover:shadow-lg text-lg">New Game</button>}
        </header>
 
-      <main className="flex-grow flex items-center justify-center py-4">
+      <main className={`flex-grow flex justify-center py-4 overflow-y-auto ${state.status === GameStatus.SUMMARY ? 'items-start' : 'items-center'}`}>
         {renderGameState()}
       </main>
     </div>
