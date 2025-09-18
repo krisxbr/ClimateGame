@@ -1,5 +1,5 @@
 import React, { useReducer, useCallback, useMemo, useState, useEffect } from 'react';
-import { GameState, Player, Scenario, Action, Choice, Answer, GameStatus, Achievement, Fact } from './gameData';
+import { GameState, Team, Scenario, Action, Choice, Answer, GameStatus, Achievement, Fact } from './gameData';
 import { SCENARIOS, INITIAL_STATE, ICONS, C_LEVEL_STYLES, ACHIEVEMENTS, AVATARS, INDIVIDUAL_SCORING, TEMP_SCORING } from './gameData';
 import { generateConsequences } from './services/geminiService';
 
@@ -12,105 +12,119 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 const gameReducer = (state: GameState, action: Action): GameState => {
   switch (action.type) {
     case 'START_GAME':
+      const shuffledScenarios = shuffleArray(state.scenarios).slice(0, action.payload.length);
       return {
         ...state,
-        players: action.payload.map(p => ({
-          id: crypto.randomUUID(),
-          name: p.name,
-          avatar: p.avatar,
-          score: 0,
-          tokens: 10,
-          cLevel: '',
-          answers: [],
-          achievements: [],
-          newAchievements: [],
-        })),
-        status: GameStatus.SCENARIO_SELECTION,
-      };
-    case 'SELECT_SCENARIO':
-        const selectedScenario = action.payload;
-        const playersWithQuestions = state.players.map(player => {
-            const themes = shuffleArray(Object.keys(selectedScenario.questions));
+        teams: action.payload.map((t, i) => {
+            const teamScenario = shuffledScenarios[i] || state.scenarios[i % state.scenarios.length]; // Fallback
+            const themes = shuffleArray(Object.keys(teamScenario.questions));
             const selectedQuestions = themes.slice(0, 3).map(theme => {
-                const questionsInTheme = selectedScenario.questions[theme];
+                const questionsInTheme = teamScenario.questions[theme];
                 const question = questionsInTheme[Math.floor(Math.random() * questionsInTheme.length)];
                 const shuffledChoices = shuffleArray(question.choices);
-                return { ...question, theme, choices: shuffledChoices }; 
+                return { ...question, theme, choices: shuffledChoices };
             });
-            return { ...player, questions: selectedQuestions, answers: [], newAchievements: [] };
-        });
-        return {
-            ...state,
-            status: GameStatus.PLAYING,
-            scenario: selectedScenario,
-            players: playersWithQuestions,
-            currentPlayerIndex: 0,
-            currentQuestionIndex: 0,
-        };
+
+            return {
+              id: crypto.randomUUID(),
+              name: t.name,
+              avatar: t.avatar,
+              players: t.players,
+              score: 0,
+              tokens: 10,
+              cLevel: '',
+              answers: [],
+              achievements: [],
+              newAchievements: [],
+              scenario: teamScenario,
+              questions: selectedQuestions,
+            }
+        }),
+        status: GameStatus.SCENARIO_ASSIGNMENT,
+        currentQuestionIndex: 0,
+        currentTeamIndex: 0,
+      };
+    case 'PROCEED_TO_PLAY':
+        return { ...state, status: GameStatus.PLAYING };
     case 'ANSWER_QUESTION':
-      const { playerId, questionId, choice } = action.payload;
-      const newPlayers = state.players.map(p => {
-        if (p.id === playerId) {
-          const newAnswers = [...p.answers, { questionId, choice }];
-          return { ...p, answers: newAnswers };
+      const { teamId, questionId, choice } = action.payload;
+      const newTeams = state.teams.map(t => {
+        if (t.id === teamId) {
+          const newAnswers = [...t.answers, { questionId, choice }];
+          return { ...t, answers: newAnswers };
         }
-        return p;
+        return t;
       });
 
-      const currentPlayer = newPlayers[state.currentPlayerIndex];
+      const nextTeamIndex = state.currentTeamIndex + 1;
+
+      if (nextTeamIndex < state.teams.length) {
+          // Next team's turn for the same question
+          return { ...state, teams: newTeams, currentTeamIndex: nextTeamIndex };
+      }
+
+      // All teams answered, move to next question
       const nextQuestionIndex = state.currentQuestionIndex + 1;
+      const anyTeam = state.teams[0]; // All teams have same number of questions
 
-      if (nextQuestionIndex < (currentPlayer.questions?.length || 0)) {
-        return { ...state, players: newPlayers, currentQuestionIndex: nextQuestionIndex };
+      if (nextQuestionIndex < (anyTeam.questions?.length || 0)) {
+          return { ...state, teams: newTeams, currentTeamIndex: 0, currentQuestionIndex: nextQuestionIndex };
       }
 
-      const nextPlayerIndex = state.currentPlayerIndex + 1;
-      if (nextPlayerIndex < state.players.length) {
-        return { ...state, players: newPlayers, currentPlayerIndex: nextPlayerIndex, currentQuestionIndex: 0 };
-      }
-
-      return { ...state, players: newPlayers, status: GameStatus.SUMMARY };
+      // Game over
+      return { ...state, teams: newTeams, status: GameStatus.SUMMARY };
 
     case 'CALCULATE_RESULTS': {
         let totalScore = 0;
-        const updatedPlayers = state.players.map(player => {
-            const newPlayer = { ...player, newAchievements: [] as Achievement[] };
-            const playerScore = newPlayer.answers.reduce((sum, ans) => sum + ans.choice.score, 0);
-            newPlayer.score = playerScore;
-            totalScore += playerScore;
+        const updatedTeams = state.teams.map(team => {
+            const newTeam = { ...team, newAchievements: [] as Achievement[] };
+            const teamScore = newTeam.answers.reduce((sum, ans) => sum + ans.choice.score, 0);
+            newTeam.score = teamScore;
+            totalScore += teamScore;
 
             const scoringRules = INDIVIDUAL_SCORING[3];
-            const result = scoringRules.find(r => playerScore >= r.range[0] && playerScore <= r.range[1]);
+            const result = scoringRules.find(r => teamScore >= r.range[0] && teamScore <= r.range[1]);
             if (result) {
-                newPlayer.cLevel = result.level;
-                newPlayer.tokens += result.tokenChange;
+                newTeam.cLevel = result.level;
+                newTeam.tokens += result.tokenChange;
             }
 
             // Achievement check
-            if (playerScore === 3 && !newPlayer.achievements.includes('eco-hero')) {
+            if (teamScore === 3 && !newTeam.achievements.includes('eco-hero')) {
               const achievement = ACHIEVEMENTS['eco-hero'];
-              newPlayer.achievements.push(achievement.id);
-              newPlayer.newAchievements.push(achievement);
+              newTeam.achievements.push(achievement.id);
+              newTeam.newAchievements.push(achievement);
             }
-            if (newPlayer.cLevel === 'Climate Champion' && !newPlayer.achievements.includes('champion')) {
+            if (newTeam.cLevel === 'Climate Champion' && !newTeam.achievements.includes('champion')) {
                const achievement = ACHIEVEMENTS['champion'];
-              newPlayer.achievements.push(achievement.id);
-              newPlayer.newAchievements.push(achievement);
+              newTeam.achievements.push(achievement.id);
+              newTeam.newAchievements.push(achievement);
             }
 
-            return newPlayer;
+            return newTeam;
         });
         
-        const tempRules = TEMP_SCORING[state.players.length]['3'];
+        const tempRules = TEMP_SCORING[state.teams.length]['3'];
         const tempResult = tempRules.find(r => totalScore >= r.range[0] && totalScore <= r.range[1]);
         const tempChange = tempResult ? tempResult.change : 0;
       
       return { 
         ...state, 
-        players: updatedPlayers, 
+        teams: updatedTeams, 
         temperature: state.temperature + tempChange,
         lastTempChange: tempChange
       };
+    }
+    case 'RESHUFFLE_SCENARIOS': {
+        const shuffledScenarios = shuffleArray(state.scenarios).slice(0, state.teams.length);
+        const updatedTeams = state.teams.map((team, index) => ({
+            ...team,
+            scenario: shuffledScenarios[index] || state.scenarios[index % state.scenarios.length], // Fallback for safety
+        }));
+        return {
+            ...state,
+            teams: updatedTeams,
+        };
     }
     case 'RESTART':
       return { ...INITIAL_STATE, scenarios: shuffleArray(SCENARIOS) };
@@ -169,43 +183,76 @@ const VerticalPillThermometer: React.FC<{ temperature: number }> = ({ temperatur
     );
 };
 
-const PlayerSetupCard: React.FC<{
-    player: { name: string, avatar: string },
+const TeamSetupCard: React.FC<{
+    team: { name: string, avatar: string, players: string[] },
     index: number,
-    onNameChange: (name: string) => void,
-    onAvatarChange: (avatar: string) => void
-}> = ({ player, index, onNameChange, onAvatarChange }) => {
-    const avatarIndex = AVATARS.indexOf(player.avatar);
+    onTeamChange: (team: { name: string, avatar: string, players: string[] }) => void,
+}> = ({ team, index, onTeamChange }) => {
+    const avatarIndex = AVATARS.indexOf(team.avatar);
+    
     const nextAvatar = () => {
         const nextIndex = (avatarIndex + 1) % AVATARS.length;
-        onAvatarChange(AVATARS[nextIndex]);
+        onTeamChange({ ...team, avatar: AVATARS[nextIndex] });
     };
+
+    const handlePlayerNameChange = (playerIndex: number, newName: string) => {
+        const newPlayers = [...team.players];
+        newPlayers[playerIndex] = newName;
+        onTeamChange({ ...team, players: newPlayers });
+    };
+
+    const handleAddPlayer = () => {
+        onTeamChange({ ...team, players: [...team.players, `Player ${team.players.length + 1}`] });
+    };
+
+    const handleRemovePlayer = (playerIndex: number) => {
+        if (team.players.length <= 1) return; // Must have at least one player
+        const newPlayers = team.players.filter((_, i) => i !== playerIndex);
+        onTeamChange({ ...team, players: newPlayers });
+    };
+
     return (
-        <div className="bg-white p-4 rounded-xl shadow-md flex items-center gap-4 animate-enter" style={{animationDelay: `${index * 100}ms`}}>
-            <button onClick={nextAvatar} className="text-6xl hover:scale-110 transition-transform">{player.avatar}</button>
-            <input type="text" value={player.name} onChange={e => onNameChange(e.target.value)} placeholder={`Player ${index + 1}`} className="w-full bg-slate-100 text-slate-800 p-3 rounded-lg text-xl font-semibold border-2 border-transparent focus:ring-2 focus:ring-violet-500 focus:outline-none" />
+        <div className="bg-white p-4 rounded-xl shadow-md flex flex-col gap-4 animate-enter" style={{animationDelay: `${index * 100}ms`}}>
+            <div className="flex items-center gap-4">
+                <button onClick={nextAvatar} className="text-6xl hover:scale-110 transition-transform">{team.avatar}</button>
+                <input type="text" value={team.name} onChange={e => onTeamChange({...team, name: e.target.value})} placeholder={`Team ${index + 1}`} className="w-full bg-slate-100 text-slate-800 p-3 rounded-lg text-xl font-semibold border-2 border-transparent focus:ring-2 focus:ring-violet-500 focus:outline-none" />
+            </div>
+            <div className="pl-20 space-y-2">
+                <label className="block text-lg font-bold text-slate-500">Players</label>
+                {team.players.map((player, pIndex) => (
+                    <div key={pIndex} className="flex items-center gap-2">
+                         <input type="text" value={player} onChange={e => handlePlayerNameChange(pIndex, e.target.value)} placeholder={`Player ${pIndex + 1}`} className="w-full bg-slate-100 text-slate-700 p-2 rounded-md text-md font-medium border-2 border-transparent focus:ring-2 focus:ring-violet-400 focus:outline-none" />
+                         <button onClick={() => handleRemovePlayer(pIndex)} disabled={team.players.length <= 1} className="text-red-500 hover:text-red-700 font-bold text-2xl disabled:opacity-30 disabled:cursor-not-allowed transition-colors"> &times; </button>
+                    </div>
+                ))}
+                 <button onClick={handleAddPlayer} className="w-full text-left font-semibold text-violet-600 hover:text-violet-800 p-2 rounded-md transition-colors text-md mt-1">+ Add Player</button>
+            </div>
         </div>
     );
 };
 
 const Lobby: React.FC<{ dispatch: React.Dispatch<Action> }> = ({ dispatch }) => {
-  const [players, setPlayers] = useState([{name: 'Player 1', avatar: AVATARS[0]}, {name: 'Player 2', avatar: AVATARS[1]}]);
+  const [teams, setTeams] = useState([
+      {name: 'Team 1', avatar: AVATARS[0], players: ['Player 1']}, 
+      {name: 'Team 2', avatar: AVATARS[1], players: ['Player 1']}
+    ]);
 
   const handleCountChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const count = parseInt(e.target.value, 10);
-    const newPlayers = Array.from({ length: count }, (_, i) => players[i] || {name: `Player ${i + 1}`, avatar: AVATARS[i % AVATARS.length]});
-    setPlayers(newPlayers);
+    const newTeams = Array.from({ length: count }, (_, i) => teams[i] || {name: `Team ${i + 1}`, avatar: AVATARS[i % AVATARS.length], players: ['Player 1']});
+    setTeams(newTeams);
   };
 
-  const handlePlayerChange = (index: number, newPlayer: {name: string, avatar: string}) => {
-    const updatedPlayers = [...players];
-    updatedPlayers[index] = newPlayer;
-    setPlayers(updatedPlayers);
+  const handleTeamChange = (index: number, newTeam: {name: string, avatar: string, players: string[]}) => {
+    const updatedTeams = [...teams];
+    updatedTeams[index] = newTeam;
+    setTeams(updatedTeams);
   };
   
   const handleStart = () => {
-      if(players.every(p => p.name.trim() !== '')) {
-          dispatch({ type: 'START_GAME', payload: players });
+      const areTeamsValid = teams.every(t => t.name.trim() !== '' && t.players.every(p => p.trim() !== ''));
+      if(areTeamsValid) {
+          dispatch({ type: 'START_GAME', payload: teams });
       }
   }
 
@@ -213,17 +260,17 @@ const Lobby: React.FC<{ dispatch: React.Dispatch<Action> }> = ({ dispatch }) => 
     <div className="w-full max-w-xl mx-auto bg-white/70 backdrop-blur-2xl p-8 rounded-3xl shadow-2xl border border-white/50">
         <div className="text-center mb-8">
             <h1 className="text-6xl font-extrabold text-slate-800 mb-2">Game Lobby</h1>
-            <p className="text-slate-500 text-xl">Assemble your team!</p>
+            <p className="text-slate-500 text-xl">Assemble your teams!</p>
         </div>
         <div className="mb-6">
-          <label htmlFor="player-count" className="block text-xl font-bold text-slate-600 mb-2">How many players?</label>
-          <select id="player-count" value={players.length} onChange={handleCountChange} className="w-full bg-white text-slate-800 p-3 rounded-lg text-xl font-semibold border-2 border-slate-200 focus:ring-2 focus:ring-violet-500 focus:outline-none">
+          <label htmlFor="team-count" className="block text-xl font-bold text-slate-600 mb-2">How many teams?</label>
+          <select id="team-count" value={teams.length} onChange={handleCountChange} className="w-full bg-white text-slate-800 p-3 rounded-lg text-xl font-semibold border-2 border-slate-200 focus:ring-2 focus:ring-violet-500 focus:outline-none">
             {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
         <div className="space-y-4 mb-8">
-          {players.map((p, i) => (
-            <PlayerSetupCard key={i} index={i} player={p} onNameChange={(name) => handlePlayerChange(i, {...p, name})} onAvatarChange={(avatar) => handlePlayerChange(i, {...p, avatar})} />
+          {teams.map((p, i) => (
+            <TeamSetupCard key={i} index={i} team={p} onTeamChange={(newTeam) => handleTeamChange(i, newTeam)} />
           ))}
         </div>
         <button onClick={handleStart} className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-4 px-4 rounded-xl text-3xl transition-all duration-300 shadow-lg hover:shadow-xl transform animate-pulse-glow">Let's Go!</button>
@@ -231,45 +278,125 @@ const Lobby: React.FC<{ dispatch: React.Dispatch<Action> }> = ({ dispatch }) => 
   );
 };
 
-const ScenarioSelection: React.FC<{ scenarios: Scenario[]; dispatch: React.Dispatch<Action> }> = ({ scenarios, dispatch }) => (
-    <div className="w-full max-w-6xl text-center">
-        <h2 className="text-6xl font-extrabold text-slate-800 mb-3">Choose a Challenge</h2>
-        <p className="text-slate-500 text-xl mb-12">Your next adventure awaits. What will it be?</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {scenarios.map((scenario, i) => (
-                <div key={scenario.id} onClick={() => dispatch({ type: 'SELECT_SCENARIO', payload: scenario })} className={`animate-pop-in rounded-3xl p-8 text-white cursor-pointer transition-all duration-300 flex flex-col items-center text-center shadow-xl hover:shadow-2xl hover:scale-105 hover:-rotate-2 transform ${scenario.color}`} style={{animationDelay: `${i*100}ms`}}>
-                    <div className="text-8xl mb-4 drop-shadow-lg">{ICONS[scenario.icon]}</div>
-                    <h3 className="text-3xl font-bold mb-2">{scenario.title}</h3>
-                    <p className="text-white/80 text-md font-medium">{scenario.description}</p>
-                </div>
-            ))}
+const ScenarioAssignmentScreen: React.FC<{ teams: Team[]; dispatch: React.Dispatch<Action> }> = ({ teams, dispatch }) => {
+    const placeholderScenario = { title: 'Assigning...', icon: 'planet' as const, color: 'bg-slate-400' };
+    const [displayedScenarios, setDisplayedScenarios] = useState<(Partial<Scenario>)[]>(teams.map(() => placeholderScenario));
+    const [isRevealing, setIsRevealing] = useState(true);
+
+    useEffect(() => {
+        setIsRevealing(true); // Reset revealing state on each shuffle
+
+        const revealTimers: NodeJS.Timeout[] = [];
+        let completedAnimations = 0;
+
+        teams.forEach((team, index) => {
+            const animationDuration = 1000 + index * 400; // Total spin time for this card
+            const spinInterval = 75; // How fast the text changes
+            let spinTimer: NodeJS.Timeout;
+
+            const startTime = Date.now();
+
+            spinTimer = setInterval(() => {
+                if (Date.now() - startTime > animationDuration) {
+                    clearInterval(spinTimer);
+                    setDisplayedScenarios(prev => {
+                        const newScenarios = [...prev];
+                        newScenarios[index] = team.scenario;
+                        return newScenarios;
+                    });
+                    completedAnimations++;
+                    if (completedAnimations === teams.length) {
+                        setIsRevealing(false);
+                    }
+                } else {
+                    setDisplayedScenarios(prev => {
+                        const newScenarios = [...prev];
+                        const randomScenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
+                        newScenarios[index] = randomScenario;
+                        return newScenarios;
+                    });
+                }
+            }, spinInterval);
+            revealTimers.push(spinTimer);
+        });
+
+        // Cleanup function to clear all intervals if the component unmounts
+        return () => {
+            revealTimers.forEach(timer => clearInterval(timer));
+        };
+    }, [teams]); // Effect runs once when component mounts with the initial teams
+
+    return (
+        <div className="w-full max-w-4xl text-center">
+            <h2 className="text-6xl font-extrabold text-slate-800 mb-12 animate-enter">Your Adventures Await!</h2>
+            <div className="space-y-8">
+                {teams.map((team, i) => {
+                    const scenario = displayedScenarios[i];
+                    return (
+                        <div key={team.id} className="animate-pop-in bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-lg flex items-center justify-between gap-6" style={{ animationDelay: `${i * 150}ms` }}>
+                            <div className="flex items-center gap-6">
+                                <div className="text-7xl">{team.avatar}</div>
+                                <div className="text-left">
+                                    <h3 className="text-4xl font-bold text-slate-800">{team.name}</h3>
+                                    <p className="text-slate-500 font-medium text-md max-w-md">{team.players.join(', ')}</p>
+                                </div>
+                            </div>
+                            <div className={`p-6 rounded-2xl text-white flex items-center gap-4 text-left min-w-[400px] transition-colors duration-200 ${scenario.color}`}>
+                                <div className="text-6xl drop-shadow-lg transition-transform duration-300 ease-out">{scenario.icon ? ICONS[scenario.icon] : '❓'}</div>
+                                <div>
+                                    <p className="text-lg opacity-80">Your challenge is...</p>
+                                    <h4 className="text-3xl font-bold">{scenario.title}</h4>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="mt-12 flex justify-center items-center gap-4 flex-wrap">
+                <button
+                    onClick={() => dispatch({ type: 'RESHUFFLE_SCENARIOS' })}
+                    disabled={isRevealing}
+                    className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-8 rounded-xl text-2xl transition-all duration-300 shadow-lg hover:shadow-xl transform disabled:bg-slate-400 disabled:cursor-not-allowed disabled:scale-100 flex items-center gap-3"
+                >
+                    <span className="text-3xl">🎲</span>
+                    Reshuffle
+                </button>
+                <button
+                    onClick={() => dispatch({ type: 'PROCEED_TO_PLAY' })}
+                    disabled={isRevealing}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 px-12 rounded-xl text-3xl transition-all duration-300 shadow-lg hover:shadow-xl transform disabled:bg-slate-400 disabled:cursor-not-allowed disabled:scale-100 animate-pulse-glow"
+                >
+                    {isRevealing ? 'Revealing...' : 'Start Playing!'}
+                </button>
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 
 const GameScreen: React.FC<{ state: GameState; dispatch: React.Dispatch<Action> }> = ({ state, dispatch }) => {
-  const { players, currentPlayerIndex, currentQuestionIndex, scenario } = state;
-  const currentPlayer = players[currentPlayerIndex];
-  const currentQuestion = currentPlayer.questions?.[currentQuestionIndex];
+  const { teams, currentTeamIndex, currentQuestionIndex } = state;
+  const currentTeam = teams[currentTeamIndex];
+  const currentQuestion = currentTeam.questions?.[currentQuestionIndex];
 
-  if (!currentPlayer || !currentQuestion || !scenario) {
+  if (!currentTeam || !currentQuestion) {
     return <div>Loading...</div>;
   }
   
   const handleAnswer = (choice: Choice) => {
-    dispatch({ type: 'ANSWER_QUESTION', payload: { playerId: currentPlayer.id, questionId: currentQuestion.id, choice } });
+    dispatch({ type: 'ANSWER_QUESTION', payload: { teamId: currentTeam.id, questionId: currentQuestion.id, choice } });
   };
   
   return (
     <div className="w-full max-w-5xl flex flex-col h-full">
-      <div className="w-full bg-white/60 backdrop-blur-md p-3 rounded-full mb-8 shadow-lg">
+      <div className="w-full bg-white/60 backdrop-blur-md p-3 rounded-full mb-6 shadow-lg">
         <div className="flex justify-around items-center">
-            {players.map((p, index) => (
-                <div key={p.id} className={`text-center transition-all duration-500 flex items-center gap-3 p-2 rounded-full ${index === currentPlayerIndex ? 'scale-110' : 'opacity-60'}`}>
-                    <div className={`text-5xl rounded-full transition-all duration-300 ${index === currentPlayerIndex ? 'animate-bounce-subtle' : ''}`}>{p.avatar}</div>
+            {teams.map((p, index) => (
+                <div key={p.id} className={`text-center transition-all duration-500 flex items-center gap-3 p-2 rounded-full ${index === currentTeamIndex ? 'scale-110' : 'opacity-60'}`}>
+                    <div className={`text-5xl rounded-full transition-all duration-300 ${index === currentTeamIndex ? 'animate-bounce-subtle' : ''}`}>{p.avatar}</div>
                     <div>
-                        <p className={`font-bold text-lg ${index === currentPlayerIndex ? 'text-violet-600' : 'text-slate-700'}`}>{p.name}</p>
+                        <p className={`font-bold text-lg ${index === currentTeamIndex ? 'text-violet-600' : 'text-slate-700'}`}>{p.name}</p>
+                        <p className="text-xs text-slate-500 max-w-40" title={p.players.join(', ')}>{p.players.join(', ')}</p>
                         <div className="flex justify-center gap-1.5 mt-1">
                             {[...Array(p.questions?.length || 0)].map((_, i) => (
                                 <div key={i} className={`w-6 h-2.5 rounded-full ${i < p.answers.length ? 'bg-violet-500' : 'bg-slate-300'}`}></div>
@@ -279,6 +406,11 @@ const GameScreen: React.FC<{ state: GameState; dispatch: React.Dispatch<Action> 
                 </div>
             ))}
         </div>
+      </div>
+      
+      <div className="text-center mb-4">
+          <h2 className="text-3xl font-bold text-slate-700">Round {currentQuestionIndex + 1} of {currentTeam.questions?.length}</h2>
+          <p className="text-xl text-slate-500">It's <span className="font-bold text-violet-600">{currentTeam.name}'s</span> turn!</p>
       </div>
 
       <div className="flex-grow bg-white p-10 rounded-3xl shadow-2xl flex flex-col justify-center animate-enter">
@@ -320,23 +452,24 @@ const AchievementBadge: React.FC<{ achievement: Achievement, delay: number }> = 
     </div>
 );
 
-const PlayerResultCard: React.FC<{ player: Player, index: number }> = ({ player, index }) => {
+const TeamResultCard: React.FC<{ team: Team, index: number }> = ({ team, index }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     return (
         <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl shadow-lg flex flex-col animate-enter" style={{animationDelay: `${400 + index * 100}ms`}}>
             <div className="flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                    <span className="text-6xl">{player.avatar}</span>
+                    <span className="text-6xl">{team.avatar}</span>
                     <div>
-                        <h4 className="text-2xl font-bold text-slate-800">{player.name}</h4>
-                        <CLevelBadge level={player.cLevel} />
+                        <h4 className="text-2xl font-bold text-slate-800">{team.name}</h4>
+                        <p className="text-slate-500 font-medium text-sm mb-1 max-w-md">{team.players.join(', ')}</p>
+                        <CLevelBadge level={team.cLevel} />
                     </div>
                 </div>
                 <div className="text-right">
                     <p className="text-md text-slate-500 font-semibold">Round Score</p>
-                    <p className="font-bold text-3xl text-slate-700 mb-1">{player.score}</p>
-                    <p className="font-bold text-2xl text-amber-500 flex items-center justify-end gap-1.5">{ICONS.token} {player.tokens}</p>
+                    <p className="font-bold text-3xl text-slate-700 mb-1">{team.score}</p>
+                    <p className="font-bold text-2xl text-amber-500 flex items-center justify-end gap-1.5">{ICONS.token} {team.tokens}</p>
                 </div>
             </div>
             <div className="mt-4 pt-4 border-t border-slate-200">
@@ -345,8 +478,8 @@ const PlayerResultCard: React.FC<{ player: Player, index: number }> = ({ player,
                 </button>
                 {isExpanded && (
                     <div className="mt-4 space-y-4">
-                        {player.answers.map((answer, i) => {
-                            const question = player.questions?.find(q => q.id === answer.questionId);
+                        {team.answers.map((answer, i) => {
+                            const question = team.questions?.find(q => q.id === answer.questionId);
                             if (!question || !question.fact) return null;
                             return (
                                 <div key={i} className="bg-slate-100/70 p-4 rounded-lg">
@@ -403,21 +536,22 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
         };
     }, [showModal]);
 
-    const allPlayerChoices = useMemo(() => state.players.flatMap(p => 
-        p.answers.map(ans => ({
-            playerName: p.name,
-            questionText: p.questions?.find(q => q.id === ans.questionId)?.text || 'Unknown',
+    const allTeamChoices = useMemo(() => state.teams.flatMap(t => 
+        t.answers.map(ans => ({
+            teamName: t.name,
+            scenarioTitle: t.scenario.title,
+            questionText: t.questions?.find(q => q.id === ans.questionId)?.text || 'Unknown',
             choiceText: ans.choice.text,
             score: ans.choice.score
         }))
-    ), [state.players]);
+    ), [state.teams]);
 
     useEffect(() => {
-        if (state.status === GameStatus.SUMMARY && allPlayerChoices.length > 0) {
+        if (state.status === GameStatus.SUMMARY && allTeamChoices.length > 0) {
             const fetchConsequences = async () => {
                 setIsLoading(true); setError('');
                 try {
-                    const result = await generateConsequences(state.scenario?.title || 'a situation', allPlayerChoices);
+                    const result = await generateConsequences(allTeamChoices);
                     setReport(result);
                 } catch (err) {
                     setError('Oh no! The AI reporter is on a coffee break.');
@@ -426,9 +560,9 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
             };
             fetchConsequences();
         }
-    }, [state.status, state.scenario, allPlayerChoices]);
+    }, [state.status, allTeamChoices]);
     
-    const newAchievements = useMemo(() => state.players.flatMap(p => p.newAchievements || []), [state.players]);
+    const newAchievements = useMemo(() => state.teams.flatMap(p => p.newAchievements || []), [state.teams]);
 
     return (
         <div className="w-full max-w-7xl mx-auto">
@@ -456,8 +590,8 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
                              </div>
                         </div>
                     )}
-                    {state.players.map((player, i) => (
-                        <PlayerResultCard key={player.id} player={player} index={i} />
+                    {state.teams.map((team, i) => (
+                        <TeamResultCard key={team.id} team={team} index={i} />
                     ))}
                      <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-xl animate-enter" style={{animationDelay: '800ms'}}>
                         <h3 className="text-2xl font-bold text-violet-600 mb-3">AI Eco-Report</h3>
@@ -489,8 +623,8 @@ export default function App() {
     switch (state.status) {
       case GameStatus.LOBBY:
         return <Lobby dispatch={dispatch} />;
-      case GameStatus.SCENARIO_SELECTION:
-        return <ScenarioSelection scenarios={state.scenarios} dispatch={dispatch} />;
+      case GameStatus.SCENARIO_ASSIGNMENT:
+        return <ScenarioAssignmentScreen teams={state.teams} dispatch={dispatch} />;
       case GameStatus.PLAYING:
         return <GameScreen state={state} dispatch={dispatch} />;
       case GameStatus.SUMMARY:

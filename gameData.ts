@@ -4,7 +4,8 @@ import React from 'react';
 
 export enum GameStatus {
   LOBBY = 'LOBBY',
-  SCENARIO_SELECTION = 'SCENARIO_SELECTION',
+  SCENARIO_ASSIGNMENT = 'SCENARIO_ASSIGNMENT',
+  SCENARIO_SELECTION = 'SCENARIO_SELECTION', // No longer used in the main flow
   PLAYING = 'PLAYING',
   SUMMARY = 'SUMMARY',
 }
@@ -52,10 +53,11 @@ export interface Achievement {
     icon: string;
 }
 
-export interface Player {
+export interface Team {
   id: string;
   name: string;
   avatar: string;
+  players: string[];
   score: number;
   tokens: number;
   cLevel: string;
@@ -63,25 +65,27 @@ export interface Player {
   questions?: Question[];
   achievements: string[];
   newAchievements?: Achievement[];
+  scenario: Scenario;
 }
 
 export interface GameState {
   status: GameStatus;
-  players: Player[];
+  teams: Team[];
   scenarios: Scenario[];
-  scenario: Scenario | null;
-  currentPlayerIndex: number;
+  currentTeamIndex: number;
   currentQuestionIndex: number;
   temperature: number;
   lastTempChange: number;
 }
 
 export type Action =
-  | { type: 'START_GAME'; payload: {name: string, avatar: string}[] }
+  | { type: 'START_GAME'; payload: {name: string, avatar: string, players: string[]}[] }
+  | { type: 'PROCEED_TO_PLAY' }
   | { type: 'SELECT_SCENARIO'; payload: Scenario }
-  | { type: 'ANSWER_QUESTION'; payload: { playerId: string; questionId: string; choice: Choice } }
+  | { type: 'ANSWER_QUESTION'; payload: { teamId: string; questionId: string; choice: Choice } }
   | { type: 'CALCULATE_RESULTS' }
-  | { type: 'RESTART' };
+  | { type: 'RESTART' }
+  | { type: 'RESHUFFLE_SCENARIOS' };
 
 // --- ICONS & AVATARS ---
 
@@ -117,10 +121,9 @@ export const ACHIEVEMENTS: { [id: string]: Achievement } = {
 
 export const INITIAL_STATE: GameState = {
   status: GameStatus.LOBBY,
-  players: [],
+  teams: [],
   scenarios: [],
-  scenario: null,
-  currentPlayerIndex: 0,
+  currentTeamIndex: 0,
   currentQuestionIndex: 0,
   temperature: 22,
   lastTempChange: 0,
