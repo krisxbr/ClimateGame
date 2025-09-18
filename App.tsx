@@ -43,6 +43,7 @@ const gameReducer = (state: GameState, action: Action): GameState => {
         status: GameStatus.SCENARIO_ASSIGNMENT,
         currentQuestionIndex: 0,
         currentTeamIndex: 0,
+        currentRound: 1,
       };
     case 'PROCEED_TO_PLAY':
         return { ...state, status: GameStatus.PLAYING };
@@ -71,7 +72,7 @@ const gameReducer = (state: GameState, action: Action): GameState => {
           return { ...state, teams: newTeams, currentTeamIndex: 0, currentQuestionIndex: nextQuestionIndex };
       }
 
-      // Game over
+      // End of round
       return { ...state, teams: newTeams, status: GameStatus.SUMMARY };
 
     case 'CALCULATE_RESULTS': {
@@ -79,7 +80,7 @@ const gameReducer = (state: GameState, action: Action): GameState => {
         const updatedTeams = state.teams.map(team => {
             const newTeam = { ...team, newAchievements: [] as Achievement[] };
             const teamScore = newTeam.answers.reduce((sum, ans) => sum + ans.choice.score, 0);
-            newTeam.score = teamScore;
+            newTeam.score += teamScore; // Accumulate score across rounds
             totalScore += teamScore;
 
             const scoringRules = INDIVIDUAL_SCORING[3];
@@ -115,6 +116,41 @@ const gameReducer = (state: GameState, action: Action): GameState => {
         lastTempChange: tempChange
       };
     }
+     case 'START_NEXT_ROUND': {
+        if (state.currentRound >= state.totalRounds) {
+            return { ...INITIAL_STATE, scenarios: shuffleArray(SCENARIOS) };
+        }
+
+        const nextRoundScenarios = shuffleArray(state.scenarios).slice(0, state.teams.length);
+        const updatedTeams = state.teams.map((team, i) => {
+            const teamScenario = nextRoundScenarios[i] || state.scenarios[i % state.scenarios.length];
+            const themes = shuffleArray(Object.keys(teamScenario.questions));
+            const selectedQuestions = themes.slice(0, 3).map(theme => {
+                const questionsInTheme = teamScenario.questions[theme];
+                const question = questionsInTheme[Math.floor(Math.random() * questionsInTheme.length)];
+                const shuffledChoices = shuffleArray(question.choices);
+                return { ...question, theme, choices: shuffledChoices };
+            });
+
+            return {
+                ...team,
+                answers: [],
+                newAchievements: [],
+                scenario: teamScenario,
+                questions: selectedQuestions,
+            };
+        });
+
+        return {
+            ...state,
+            teams: updatedTeams,
+            status: GameStatus.SCENARIO_ASSIGNMENT,
+            currentQuestionIndex: 0,
+            currentTeamIndex: 0,
+            lastTempChange: 0,
+            currentRound: state.currentRound + 1,
+        };
+     }
     case 'RESHUFFLE_SCENARIOS': {
         const shuffledScenarios = shuffleArray(state.scenarios).slice(0, state.teams.length);
         const updatedTeams = state.teams.map((team, index) => ({
@@ -135,6 +171,48 @@ const gameReducer = (state: GameState, action: Action): GameState => {
 };
 
 // --- UI COMPONENTS ---
+
+const ScoringHelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+        <div className="bg-white/90 backdrop-blur-2xl border border-white/50 rounded-3xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-pop-in" onClick={e => e.stopPropagation()}>
+            <h3 className="text-4xl font-extrabold text-slate-800 mb-6 text-center">How Scoring Works 🎯</h3>
+            
+            <div className="space-y-6 text-slate-600 text-lg leading-relaxed">
+                <div>
+                    <h4 className="font-bold text-xl text-violet-600 mb-2">The Goal: Small Choices, Big Impact</h4>
+                    <p>The game shows how everyday choices add up to affect our planet. Your team's actions are directly linked to the global temperature!</p>
+                </div>
+
+                <div>
+                    <h4 className="font-bold text-xl text-violet-600 mb-2">1. Your Individual Choices (Lower is Better! ⬇️)</h4>
+                    <p>Each answer has a hidden score from <span className="font-bold">1 (most eco-friendly)</span> to <span className="font-bold">5 (least eco-friendly)</span>. Your team's goal is to get the <span className="font-bold">lowest score possible</span> by making sustainable choices.</p>
+                </div>
+
+                <div>
+                    <h4 className="font-bold text-xl text-violet-600 mb-2">2. Your Team's "C-Level" (Climate Report Card 🌟)</h4>
+                    <p>At the end, your team's total score determines your "C-Level" (e.g., 'Climate Champion'). A better C-Level earns your team more Tokens 🪙 for the next round!</p>
+                </div>
+                
+                <div>
+                    <h4 className="font-bold text-xl text-violet-600 mb-2">3. The Global Temperature (We're All In This Together! 🌍)</h4>
+                    <p>This is key! We add up the scores from <span className="font-bold">all teams</span>. This combined total decides if the global temperature goes up or down. It proves that collaboration is essential to protect our shared environment.</p>
+                </div>
+                
+                <div>
+                    <h4 className="font-bold text-xl text-violet-600 mb-2">Pro-Tips to Win! 💡</h4>
+                    <ul className="list-disc list-inside space-y-2 pl-2">
+                        <li><span className="font-semibold">Think "Less is More":</span> Choices involving walking, using things you own, or choosing local usually have the lowest scores.</li>
+                        <li><span className="font-semibold">Convenience Can Cost:</span> The fastest or easiest option (like private cars or single-use items) often has the highest environmental impact and score.</li>
+                        <li><span className="font-semibold">Team Up for the Planet:</span> Encourage other teams to aim for low scores too! Everyone's choices affect the final temperature.</li>
+                    </ul>
+                </div>
+
+            </div>
+
+            <button onClick={onClose} className="mt-8 bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 px-6 rounded-xl w-full text-2xl transition-all shadow-lg hover:shadow-xl">Got it!</button>
+        </div>
+    </div>
+);
 
 const getTemperatureFeedback = (temp: number) => {
     if (temp <= 15) return { text: "Very cold! Ecosystems are struggling.", color: "bg-blue-500" };
@@ -231,7 +309,7 @@ const TeamSetupCard: React.FC<{
     );
 };
 
-const Lobby: React.FC<{ dispatch: React.Dispatch<Action> }> = ({ dispatch }) => {
+const Lobby: React.FC<{ dispatch: React.Dispatch<Action>; onShowHelp: () => void }> = ({ dispatch, onShowHelp }) => {
   const [teams, setTeams] = useState([
       {name: 'Team 1', avatar: AVATARS[0], players: ['Player 1']}, 
       {name: 'Team 2', avatar: AVATARS[1], players: ['Player 1']}
@@ -257,7 +335,15 @@ const Lobby: React.FC<{ dispatch: React.Dispatch<Action> }> = ({ dispatch }) => 
   }
 
   return (
-    <div className="w-full max-w-xl mx-auto bg-white/70 backdrop-blur-2xl p-8 rounded-3xl shadow-2xl border border-white/50">
+    <div className="relative w-full max-w-xl mx-auto bg-white/70 backdrop-blur-2xl p-8 rounded-3xl shadow-2xl border border-white/50">
+        <button 
+            onClick={onShowHelp} 
+            className="absolute top-4 right-4 w-10 h-10 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-full flex items-center justify-center text-2xl font-bold transition-colors z-10"
+            aria-label="How scoring works"
+            title="How scoring works"
+        >
+            ?
+        </button>
         <div className="text-center mb-8">
             <h1 className="text-6xl font-extrabold text-slate-800 mb-2">Game Lobby</h1>
             <p className="text-slate-500 text-xl">Assemble your teams!</p>
@@ -286,13 +372,15 @@ const ScenarioAssignmentScreen: React.FC<{ teams: Team[]; dispatch: React.Dispat
     useEffect(() => {
         setIsRevealing(true); // Reset revealing state on each shuffle
 
-        const revealTimers: NodeJS.Timeout[] = [];
+        // FIX: Replaced NodeJS.Timeout with number for browser compatibility.
+        const revealTimers: number[] = [];
         let completedAnimations = 0;
 
         teams.forEach((team, index) => {
             const animationDuration = 1000 + index * 400; // Total spin time for this card
             const spinInterval = 75; // How fast the text changes
-            let spinTimer: NodeJS.Timeout;
+            // FIX: Replaced NodeJS.Timeout with number for browser compatibility.
+            let spinTimer: number;
 
             const startTime = Date.now();
 
@@ -373,19 +461,86 @@ const ScenarioAssignmentScreen: React.FC<{ teams: Team[]; dispatch: React.Dispat
     );
 };
 
+const Timer: React.FC<{ timeLeft: number; duration: number }> = ({ timeLeft, duration }) => {
+    const radius = 45;
+    const circumference = 2 * Math.PI * radius;
+    const progress = (timeLeft / duration);
+    const offset = circumference * (1 - progress);
+
+    let color = 'stroke-emerald-500';
+    if (timeLeft <= 10) color = 'stroke-yellow-500';
+    if (timeLeft <= 5) color = 'stroke-red-500';
+
+    return (
+        <div className="relative w-28 h-28">
+            <svg className="w-full h-full" viewBox="0 0 100 100">
+                {/* Background circle */}
+                <circle
+                    className="stroke-slate-200"
+                    strokeWidth="10"
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    fill="transparent"
+                />
+                {/* Progress circle */}
+                <circle
+                    className={`transition-colors duration-500 ${color}`}
+                    strokeWidth="10"
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    fill="transparent"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={offset}
+                    strokeLinecap="round"
+                    transform="rotate(-90 50 50)"
+                    style={{ transition: 'stroke-dashoffset 1s linear' }}
+                />
+            </svg>
+            <div className={`absolute inset-0 flex items-center justify-center text-4xl font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-slate-700'}`}>
+                {timeLeft}
+            </div>
+        </div>
+    );
+};
+
 
 const GameScreen: React.FC<{ state: GameState; dispatch: React.Dispatch<Action> }> = ({ state, dispatch }) => {
   const { teams, currentTeamIndex, currentQuestionIndex } = state;
   const currentTeam = teams[currentTeamIndex];
   const currentQuestion = currentTeam.questions?.[currentQuestionIndex];
+  const [timeLeft, setTimeLeft] = useState(20);
+
+  const handleAnswer = useCallback((choice: Choice) => {
+    if (!currentTeam || !currentQuestion) return;
+    dispatch({ type: 'ANSWER_QUESTION', payload: { teamId: currentTeam.id, questionId: currentQuestion.id, choice } });
+  }, [dispatch, currentTeam, currentQuestion]);
+
+  useEffect(() => {
+    if (!currentQuestion) return;
+    
+    setTimeLeft(20); // Reset timer for new question/team
+    const timer = setInterval(() => {
+        setTimeLeft(prevTime => {
+            if (prevTime <= 1) {
+                clearInterval(timer);
+                // Time's up! Find the worst choice (highest score) and submit it.
+                const worstChoice = [...currentQuestion.choices].sort((a, b) => b.score - a.score)[0];
+                handleAnswer(worstChoice);
+                return 0;
+            }
+            return prevTime - 1;
+        });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [currentTeam.id, currentQuestion?.id, handleAnswer]); 
+
 
   if (!currentTeam || !currentQuestion) {
     return <div>Loading...</div>;
   }
-  
-  const handleAnswer = (choice: Choice) => {
-    dispatch({ type: 'ANSWER_QUESTION', payload: { teamId: currentTeam.id, questionId: currentQuestion.id, choice } });
-  };
   
   return (
     <div className="w-full max-w-5xl flex flex-col h-full">
@@ -409,11 +564,14 @@ const GameScreen: React.FC<{ state: GameState; dispatch: React.Dispatch<Action> 
       </div>
       
       <div className="text-center mb-4">
-          <h2 className="text-3xl font-bold text-slate-700">Round {currentQuestionIndex + 1} of {currentTeam.questions?.length}</h2>
+          <h2 className="text-3xl font-bold text-slate-700">Question {currentQuestionIndex + 1} of {currentTeam.questions?.length}</h2>
           <p className="text-xl text-slate-500">It's <span className="font-bold text-violet-600">{currentTeam.name}'s</span> turn!</p>
       </div>
 
       <div className="flex-grow bg-white p-10 rounded-3xl shadow-2xl flex flex-col justify-center animate-enter">
+          <div className="flex justify-center mb-6">
+              <Timer timeLeft={timeLeft} duration={20} />
+          </div>
           <div>
             {currentQuestion.theme && (
                 <span className="bg-teal-100 text-teal-800 text-md font-bold px-5 py-2 rounded-full mb-5 inline-block">{currentQuestion.theme}</span>
@@ -452,46 +610,81 @@ const AchievementBadge: React.FC<{ achievement: Achievement, delay: number }> = 
     </div>
 );
 
-const TeamResultCard: React.FC<{ team: Team, index: number }> = ({ team, index }) => {
+const TeamResultCard: React.FC<{ team: Team, index: number, rank: number }> = ({ team, index, rank }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const roundScore = team.answers.reduce((sum, ans) => sum + ans.choice.score, 0);
+
+    const getRankStyle = (rank: number) => {
+        switch (rank) {
+            case 1: return { badge: 'bg-yellow-400 border-yellow-500', text: 'text-yellow-800', icon: '🥇' };
+            case 2: return { badge: 'bg-slate-300 border-slate-400', text: 'text-slate-800', icon: '🥈' };
+            case 3: return { badge: 'bg-orange-400 border-orange-500', text: 'text-orange-800', icon: '🥉' };
+            default: return { badge: 'bg-slate-200 border-slate-300', text: 'text-slate-600', icon: '' };
+        }
+    };
+
+    const rankStyle = getRankStyle(rank);
 
     return (
         <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl shadow-lg flex flex-col animate-enter" style={{animationDelay: `${400 + index * 100}ms`}}>
             <div className="flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                    <span className="text-6xl">{team.avatar}</span>
+                     <div className="relative">
+                        <span className="text-6xl">{team.avatar}</span>
+                        <div className={`absolute -top-1 -left-2 w-9 h-9 rounded-full flex items-center justify-center font-extrabold border-2 shadow-md ${rankStyle.badge} ${rankStyle.text}`}>
+                            {rank}
+                        </div>
+                    </div>
                     <div>
-                        <h4 className="text-2xl font-bold text-slate-800">{team.name}</h4>
+                        <h4 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                           {team.name}
+                           <span className="text-2xl">{rank <= 3 && rankStyle.icon}</span>
+                        </h4>
                         <p className="text-slate-500 font-medium text-sm mb-1 max-w-md">{team.players.join(', ')}</p>
                         <CLevelBadge level={team.cLevel} />
                     </div>
                 </div>
                 <div className="text-right">
-                    <p className="text-md text-slate-500 font-semibold">Round Score</p>
-                    <p className="font-bold text-3xl text-slate-700 mb-1">{team.score}</p>
+                    <p className="text-md text-slate-500 font-semibold">Total Score</p>
+                    <p className="font-bold text-3xl text-slate-700 -mb-1">{team.score}</p>
+                    <p className="text-sm text-slate-400 mb-1">(Round: {roundScore})</p>
                     <p className="font-bold text-2xl text-amber-500 flex items-center justify-end gap-1.5">{ICONS.token} {team.tokens}</p>
                 </div>
             </div>
-            <div className="mt-4 pt-4 border-t border-slate-200">
-                 <button onClick={() => setIsExpanded(!isExpanded)} className="font-bold text-lg text-violet-600 hover:underline flex items-center gap-2">
-                    💡 Why it Matters {isExpanded ? '▲' : '▼'}
-                </button>
-                {isExpanded && (
-                    <div className="mt-4 space-y-4">
-                        {team.answers.map((answer, i) => {
-                            const question = team.questions?.find(q => q.id === answer.questionId);
-                            if (!question || !question.fact) return null;
-                            return (
-                                <div key={i} className="bg-slate-100/70 p-4 rounded-lg">
-                                    <p className="font-semibold text-slate-600">You chose: <span className="font-normal">"{answer.choice.text}"</span></p>
-                                    <p className="mt-2 text-slate-800"><span className="font-bold">Fact:</span> {question.fact.text}</p>
-                                    <a href={question.fact.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold hover:underline">Source →</a>
+            
+            {(team.newAchievements && team.newAchievements.length > 0) || team.answers.length > 0 ? (
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                    {team.newAchievements && team.newAchievements.length > 0 && (
+                        <div className="space-y-3 mb-4">
+                            {team.newAchievements.map((ach, i) => (
+                                <AchievementBadge key={ach.id} achievement={ach} delay={i * 150} />
+                            ))}
+                        </div>
+                    )}
+                    {team.answers.length > 0 && (
+                        <div>
+                            <button onClick={() => setIsExpanded(!isExpanded)} className="font-bold text-lg text-violet-600 hover:underline flex items-center gap-2">
+                                💡 Why it Matters {isExpanded ? '▲' : '▼'}
+                            </button>
+                            {isExpanded && (
+                                <div className="mt-4 space-y-4">
+                                    {team.answers.map((answer, i) => {
+                                        const question = team.questions?.find(q => q.id === answer.questionId);
+                                        if (!question || !question.fact) return null;
+                                        return (
+                                            <div key={i} className="bg-slate-100/70 p-4 rounded-lg">
+                                                <p className="font-semibold text-slate-600">You chose: <span className="font-normal">"{answer.choice.text}"</span></p>
+                                                <p className="mt-2 text-slate-800"><span className="font-bold">Fact:</span> {question.fact.text}</p>
+                                                <a href={question.fact.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold hover:underline">Source →</a>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            ) : null}
         </div>
     );
 };
@@ -523,14 +716,12 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
         dispatch({ type: 'CALCULATE_RESULTS' });
     }, [dispatch]);
     
-    // Effect to handle body scroll lock when modal is open
     useEffect(() => {
         if (showModal) {
             document.body.style.overflow = 'hidden';
         } else {
             document.body.style.overflow = 'unset';
         }
-        // Cleanup function to reset scroll on component unmount
         return () => {
             document.body.style.overflow = 'unset';
         };
@@ -561,13 +752,16 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
             fetchConsequences();
         }
     }, [state.status, allTeamChoices]);
-    
-    const newAchievements = useMemo(() => state.teams.flatMap(p => p.newAchievements || []), [state.teams]);
+
+    const rankedTeams = useMemo(() => 
+        [...state.teams].sort((a, b) => a.score - b.score),
+    [state.teams]);
 
     return (
         <div className="w-full max-w-7xl mx-auto">
             {showModal && <ReportModal report={report} onClose={() => setShowModal(false)} />}
-            <h2 className="text-6xl font-extrabold text-slate-800 mb-8 text-center animate-enter">Round Summary!</h2>
+            <h2 className="text-6xl font-extrabold text-slate-800 mb-2 text-center animate-enter">Round {state.currentRound} of {state.totalRounds} Summary!</h2>
+            <p className="text-2xl text-slate-500 mb-8 text-center animate-enter" style={{animationDelay: '100ms'}}>Team Rankings (Lowest Total Score Wins!)</p>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 
                 <div className="lg:col-span-1 bg-white/70 backdrop-blur-2xl p-6 rounded-3xl shadow-2xl flex flex-col justify-center items-center border border-white/50 animate-enter" style={{animationDelay: '100ms'}}>
@@ -582,16 +776,8 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
                 </div>
 
                 <div className="lg:col-span-2 space-y-5">
-                    {newAchievements.length > 0 && (
-                        <div className="bg-white/70 backdrop-blur-2xl p-6 rounded-3xl shadow-2xl border border-white/50 animate-enter" style={{animationDelay: '200ms'}}>
-                             <h3 className="text-3xl font-bold text-yellow-600 mb-4 flex items-center justify-center gap-3">🏆 Achievements Unlocked! 🏆</h3>
-                             <div className="space-y-4">
-                                {newAchievements.map((ach, i) => <AchievementBadge key={ach.id} achievement={ach} delay={i * 150} />)}
-                             </div>
-                        </div>
-                    )}
-                    {state.teams.map((team, i) => (
-                        <TeamResultCard key={team.id} team={team} index={i} />
+                    {rankedTeams.map((team, i) => (
+                        <TeamResultCard key={team.id} team={team} index={i} rank={i + 1} />
                     ))}
                      <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-xl animate-enter" style={{animationDelay: '800ms'}}>
                         <h3 className="text-2xl font-bold text-violet-600 mb-3">AI Eco-Report</h3>
@@ -607,7 +793,15 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
                 </div>
             </div>
             <div className="text-center mt-12 animate-enter" style={{animationDelay: '900ms'}}>
-                <button onClick={() => dispatch({ type: 'RESTART' })} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 px-12 rounded-xl text-3xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 animate-pulse-glow">Play Again!</button>
+                {state.currentRound < state.totalRounds ? (
+                    <button onClick={() => dispatch({ type: 'START_NEXT_ROUND' })} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 px-12 rounded-xl text-3xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 animate-pulse-glow">
+                        Start Round {state.currentRound + 1}!
+                    </button>
+                ) : (
+                    <button onClick={() => dispatch({ type: 'RESTART' })} className="bg-violet-600 hover:bg-violet-700 text-white font-bold py-4 px-12 rounded-xl text-3xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 animate-pulse-glow">
+                        Play Again!
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -618,11 +812,12 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
 export default function App() {
   const [initialState] = useState(() => ({...INITIAL_STATE, scenarios: shuffleArray(SCENARIOS)}));
   const [state, dispatch] = useReducer(gameReducer, initialState);
+  const [showScoringHelp, setShowScoringHelp] = useState(false);
 
   const renderGameState = () => {
     switch (state.status) {
       case GameStatus.LOBBY:
-        return <Lobby dispatch={dispatch} />;
+        return <Lobby dispatch={dispatch} onShowHelp={() => setShowScoringHelp(true)} />;
       case GameStatus.SCENARIO_ASSIGNMENT:
         return <ScenarioAssignmentScreen teams={state.teams} dispatch={dispatch} />;
       case GameStatus.PLAYING:
@@ -630,15 +825,23 @@ export default function App() {
       case GameStatus.SUMMARY:
         return <RoundSummary state={state} dispatch={dispatch} />;
       default:
-        return <Lobby dispatch={dispatch} />;
+        return <Lobby dispatch={dispatch} onShowHelp={() => setShowScoringHelp(true)} />;
     }
   };
 
   return (
     <div className="bg-gradient-to-br from-violet-100 via-cyan-100 to-emerald-100 text-slate-800 h-screen w-screen p-4 sm:p-6 flex flex-col font-sans overflow-hidden">
+       {showScoringHelp && <ScoringHelpModal onClose={() => setShowScoringHelp(false)} />}
        <header className="w-full max-w-7xl mx-auto flex justify-between items-center shrink-0">
           <div className="text-4xl font-extrabold">CLIMATE <span className="text-emerald-500">CHAN</span><span className="text-violet-500">CE</span></div>
-          {state.status !== GameStatus.LOBBY && <button onClick={() => dispatch({type: 'RESTART'})} className="bg-white hover:bg-slate-100 text-slate-700 font-bold py-3 px-5 rounded-lg transition duration-300 border border-slate-200 shadow-md hover:shadow-lg text-lg">New Game</button>}
+          <div className="flex items-center gap-6">
+            {state.status !== GameStatus.LOBBY && (
+              <div className="text-2xl font-bold text-slate-600 bg-white/70 px-4 py-2 rounded-lg shadow-md">
+                Round: <span className="text-violet-600">{state.currentRound} / {state.totalRounds}</span>
+              </div>
+            )}
+            {state.status !== GameStatus.LOBBY && <button onClick={() => dispatch({type: 'RESTART'})} className="bg-white hover:bg-slate-100 text-slate-700 font-bold py-3 px-5 rounded-lg transition duration-300 border border-slate-200 shadow-md hover:shadow-lg text-lg">New Game</button>}
+          </div>
        </header>
 
       <main className={`flex-grow flex justify-center py-4 overflow-y-auto ${state.status === GameStatus.SUMMARY ? 'items-start' : 'items-center'}`}>

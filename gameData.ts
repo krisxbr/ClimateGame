@@ -76,6 +76,8 @@ export interface GameState {
   currentQuestionIndex: number;
   temperature: number;
   lastTempChange: number;
+  currentRound: number;
+  totalRounds: number;
 }
 
 export type Action =
@@ -84,6 +86,7 @@ export type Action =
   | { type: 'SELECT_SCENARIO'; payload: Scenario }
   | { type: 'ANSWER_QUESTION'; payload: { teamId: string; questionId: string; choice: Choice } }
   | { type: 'CALCULATE_RESULTS' }
+  | { type: 'START_NEXT_ROUND' }
   | { type: 'RESTART' }
   | { type: 'RESHUFFLE_SCENARIOS' };
 
@@ -127,6 +130,8 @@ export const INITIAL_STATE: GameState = {
   currentQuestionIndex: 0,
   temperature: 22,
   lastTempChange: 0,
+  currentRound: 1,
+  totalRounds: 3,
 };
 
 export const INDIVIDUAL_SCORING: { [key: number]: { range: [number, number], level: string, tokenChange: number }[] } = {
