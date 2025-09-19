@@ -1,7 +1,7 @@
+
 import React, { useReducer, useCallback, useMemo, useState, useEffect } from 'react';
-import { GameState, Team, Scenario, Action, Choice, Answer, GameStatus, Achievement, Fact } from './gameData';
+import { GameState, Team, Scenario, Action, Choice, Answer, GameStatus, Achievement, Fact, Question } from './gameData';
 import { SCENARIOS, INITIAL_STATE, ICONS, C_LEVEL_STYLES, ACHIEVEMENTS, AVATARS, INDIVIDUAL_SCORING, TEMP_SCORING } from './gameData';
-import { generateConsequences } from './services/geminiService';
 
 // Helper to shuffle an array
 const shuffleArray = <T,>(array: T[]): T[] => {
@@ -12,18 +12,28 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 const gameReducer = (state: GameState, action: Action): GameState => {
   switch (action.type) {
     case 'START_GAME':
-      const shuffledScenarios = shuffleArray(state.scenarios).slice(0, action.payload.length);
+      const { teams: newTeamsPayload, questionsPerRound, totalRounds } = action.payload;
+      const shuffledScenarios = shuffleArray(state.scenarios).slice(0, newTeamsPayload.length);
       return {
         ...state,
-        teams: action.payload.map((t, i) => {
+        questionsPerRound,
+        totalRounds,
+        teams: newTeamsPayload.map((t, i) => {
             const teamScenario = shuffledScenarios[i] || state.scenarios[i % state.scenarios.length]; // Fallback
-            const themes = shuffleArray(Object.keys(teamScenario.questions));
-            const selectedQuestions = themes.slice(0, 3).map(theme => {
-                const questionsInTheme = teamScenario.questions[theme];
-                const question = questionsInTheme[Math.floor(Math.random() * questionsInTheme.length)];
-                const shuffledChoices = shuffleArray(question.choices);
-                return { ...question, theme, choices: shuffledChoices };
-            });
+            
+            const allQuestionsWithTheme = Object.entries(teamScenario.questions).flatMap(([theme, questions]) =>
+                questions.map(q => ({ ...q, theme }))
+            );
+            const shuffledUniqueQuestions = shuffleArray(allQuestionsWithTheme);
+            let selectedPool = [...shuffledUniqueQuestions];
+            while(selectedPool.length < questionsPerRound) {
+                selectedPool.push(...shuffledUniqueQuestions);
+            }
+            const selectedQuestions = selectedPool.slice(0, questionsPerRound).map((q, i) => ({
+                ...q,
+                id: `${q.id}-${i}`,
+                choices: shuffleArray(q.choices)
+            }));
 
             return {
               id: crypto.randomUUID(),
@@ -83,7 +93,7 @@ const gameReducer = (state: GameState, action: Action): GameState => {
             newTeam.score += teamScore; // Accumulate score across rounds
             totalScore += teamScore;
 
-            const scoringRules = INDIVIDUAL_SCORING[3];
+            const scoringRules = INDIVIDUAL_SCORING[state.questionsPerRound];
             const result = scoringRules.find(r => teamScore >= r.range[0] && teamScore <= r.range[1]);
             if (result) {
                 newTeam.cLevel = result.level;
@@ -105,7 +115,7 @@ const gameReducer = (state: GameState, action: Action): GameState => {
             return newTeam;
         });
         
-        const tempRules = TEMP_SCORING[state.teams.length]['3'];
+        const tempRules = TEMP_SCORING[state.teams.length][state.questionsPerRound];
         const tempResult = tempRules.find(r => totalScore >= r.range[0] && totalScore <= r.range[1]);
         const tempChange = tempResult ? tempResult.change : 0;
       
@@ -124,13 +134,21 @@ const gameReducer = (state: GameState, action: Action): GameState => {
         const nextRoundScenarios = shuffleArray(state.scenarios).slice(0, state.teams.length);
         const updatedTeams = state.teams.map((team, i) => {
             const teamScenario = nextRoundScenarios[i] || state.scenarios[i % state.scenarios.length];
-            const themes = shuffleArray(Object.keys(teamScenario.questions));
-            const selectedQuestions = themes.slice(0, 3).map(theme => {
-                const questionsInTheme = teamScenario.questions[theme];
-                const question = questionsInTheme[Math.floor(Math.random() * questionsInTheme.length)];
-                const shuffledChoices = shuffleArray(question.choices);
-                return { ...question, theme, choices: shuffledChoices };
-            });
+            
+            const allQuestionsWithTheme = Object.entries(teamScenario.questions).flatMap(([theme, questions]) =>
+                questions.map(q => ({ ...q, theme }))
+            );
+            const shuffledUniqueQuestions = shuffleArray(allQuestionsWithTheme);
+            let selectedPool = [...shuffledUniqueQuestions];
+            while(selectedPool.length < state.questionsPerRound) {
+                selectedPool.push(...shuffledUniqueQuestions);
+            }
+            const selectedQuestions = selectedPool.slice(0, state.questionsPerRound).map((q, i) => ({
+                ...q,
+                id: `${q.id}-${i}`,
+                choices: shuffleArray(q.choices)
+            }));
+
 
             return {
                 ...team,
@@ -195,7 +213,7 @@ const ScoringHelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
                 
                 <div>
                     <h4 className="font-bold text-xl text-violet-600 mb-2">3. The Global Temperature (We're All In This Together! 🌍)</h4>
-                    <p>This is key! We add up the scores from <span className="font-bold">all teams</span>. This combined total decides if the global temperature goes up or down. It proves that collaboration is essential to protect our shared environment.</p>
+                    <p>This is key! We add up the scores from <span className="font-bold">all teams</span>. This combined total decides if the global temperature goes up or down. It proves that collaboration is essential to protect our shared environment. The best collective performance can even <span className="font-bold text-blue-600">LOWER</span> the temperature!</p>
                 </div>
                 
                 <div>
@@ -314,6 +332,8 @@ const Lobby: React.FC<{ dispatch: React.Dispatch<Action>; onShowHelp: () => void
       {name: 'Team 1', avatar: AVATARS[0], players: ['Player 1']}, 
       {name: 'Team 2', avatar: AVATARS[1], players: ['Player 1']}
     ]);
+    const [questionsPerRound, setQuestionsPerRound] = useState<3 | 4 | 6>(3);
+    const [totalRounds, setTotalRounds] = useState<number>(3);
 
   const handleCountChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const count = parseInt(e.target.value, 10);
@@ -330,7 +350,7 @@ const Lobby: React.FC<{ dispatch: React.Dispatch<Action>; onShowHelp: () => void
   const handleStart = () => {
       const areTeamsValid = teams.every(t => t.name.trim() !== '' && t.players.every(p => p.trim() !== ''));
       if(areTeamsValid) {
-          dispatch({ type: 'START_GAME', payload: teams });
+          dispatch({ type: 'START_GAME', payload: { teams, questionsPerRound, totalRounds } });
       }
   }
 
@@ -352,6 +372,30 @@ const Lobby: React.FC<{ dispatch: React.Dispatch<Action>; onShowHelp: () => void
           <label htmlFor="team-count" className="block text-xl font-bold text-slate-600 mb-2">How many teams?</label>
           <select id="team-count" value={teams.length} onChange={handleCountChange} className="w-full bg-white text-slate-800 p-3 rounded-lg text-xl font-semibold border-2 border-slate-200 focus:ring-2 focus:ring-violet-500 focus:outline-none">
             {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div className="mb-6">
+          <label htmlFor="question-count" className="block text-xl font-bold text-slate-600 mb-2">Questions per round?</label>
+          <select 
+            id="question-count" 
+            value={questionsPerRound} 
+            onChange={(e) => setQuestionsPerRound(parseInt(e.target.value, 10) as 3 | 4 | 6)} 
+            className="w-full bg-white text-slate-800 p-3 rounded-lg text-xl font-semibold border-2 border-slate-200 focus:ring-2 focus:ring-violet-500 focus:outline-none"
+          >
+            <option value={3}>3 Questions (Quick Game)</option>
+            <option value={4}>4 Questions (Standard)</option>
+            <option value={6}>6 Questions (Full Experience)</option>
+          </select>
+        </div>
+        <div className="mb-6">
+          <label htmlFor="round-count" className="block text-xl font-bold text-slate-600 mb-2">Number of rounds?</label>
+          <select 
+            id="round-count" 
+            value={totalRounds} 
+            onChange={(e) => setTotalRounds(parseInt(e.target.value, 10))} 
+            className="w-full bg-white text-slate-800 p-3 rounded-lg text-xl font-semibold border-2 border-slate-200 focus:ring-2 focus:ring-violet-500 focus:outline-none"
+          >
+            {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} Round{n > 1 ? 's' : ''}</option>)}
           </select>
         </div>
         <div className="space-y-4 mb-8">
@@ -412,30 +456,48 @@ const ScenarioAssignmentScreen: React.FC<{ teams: Team[]; dispatch: React.Dispat
         return () => {
             revealTimers.forEach(timer => clearInterval(timer));
         };
-    }, [teams]); // Effect runs once when component mounts with the initial teams
+    }, [teams]);
 
     return (
-        <div className="w-full max-w-4xl text-center">
-            <h2 className="text-6xl font-extrabold text-slate-800 mb-12 animate-enter">Your Adventures Await!</h2>
-            <div className="space-y-8">
+        <div className="w-full max-w-5xl text-center">
+            <h2 className="text-6xl font-extrabold text-slate-800 mb-4 animate-enter">Your Adventures Await!</h2>
+            <p className="text-xl text-slate-500 mb-10 animate-enter" style={{animationDelay: '100ms'}}>
+                Here are the adventures your teams will embark on!
+            </p>
+            <div className="space-y-4">
                 {teams.map((team, i) => {
                     const scenario = displayedScenarios[i];
                     return (
-                        <div key={team.id} className="animate-pop-in bg-white/60 backdrop-blur-md p-6 rounded-2xl shadow-lg flex items-center justify-between gap-6" style={{ animationDelay: `${i * 150}ms` }}>
-                            <div className="flex items-center gap-6">
-                                <div className="text-7xl">{team.avatar}</div>
-                                <div className="text-left">
-                                    <h3 className="text-4xl font-bold text-slate-800">{team.name}</h3>
-                                    <p className="text-slate-500 font-medium text-md max-w-md">{team.players.join(', ')}</p>
+                        <div key={team.id} className="animate-pop-in bg-white/60 backdrop-blur-md rounded-2xl shadow-lg overflow-hidden transition-all duration-300 ease-in-out" style={{ animationDelay: `${i * 150}ms` }}>
+                            <div
+                                className={`p-6 flex items-center justify-between gap-6 transition-all`}
+                            >
+                                <div className="flex items-center gap-6">
+                                    <div className="text-7xl">{team.avatar}</div>
+                                    <div className="text-left">
+                                        <h3 className="text-4xl font-bold text-slate-800">{team.name}</h3>
+                                        <p className="text-slate-500 font-medium text-md max-w-md">{team.players.join(', ')}</p>
+                                    </div>
+                                </div>
+                                <div className={`p-6 rounded-2xl text-white flex items-center gap-4 text-left min-w-[400px] transition-colors duration-200 ${scenario.color}`}>
+                                    <div className="text-6xl drop-shadow-lg transition-transform duration-300 ease-out">{scenario.icon ? ICONS[scenario.icon] : '❓'}</div>
+                                    <div>
+                                        <p className="text-lg opacity-80">Your challenge is...</p>
+                                        <h4 className="text-3xl font-bold">{scenario.title}</h4>
+                                    </div>
                                 </div>
                             </div>
-                            <div className={`p-6 rounded-2xl text-white flex items-center gap-4 text-left min-w-[400px] transition-colors duration-200 ${scenario.color}`}>
-                                <div className="text-6xl drop-shadow-lg transition-transform duration-300 ease-out">{scenario.icon ? ICONS[scenario.icon] : '❓'}</div>
-                                <div>
-                                    <p className="text-lg opacity-80">Your challenge is...</p>
-                                    <h4 className="text-3xl font-bold">{scenario.title}</h4>
+                            
+                            {!isRevealing && scenario.description && (
+                                <div className="px-6 pb-6 pt-0">
+                                    <div className="bg-white/50 p-6 rounded-xl border-t-2 border-slate-200/80">
+                                        <div className="text-left">
+                                            <h5 className="text-2xl font-bold text-slate-700 mb-2">The Mission</h5>
+                                            <p className="text-lg text-slate-600 leading-relaxed">{scenario.description}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     );
                 })}
@@ -689,77 +751,18 @@ const TeamResultCard: React.FC<{ team: Team, index: number, rank: number }> = ({
     );
 };
 
-const ReportModal: React.FC<{ report: string; onClose: () => void }> = ({ report, onClose }) => (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-        <div className="bg-white/80 backdrop-blur-2xl border border-white/50 rounded-3xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto animate-pop-in" onClick={e => e.stopPropagation()}>
-            <h3 className="text-4xl font-extrabold text-violet-600 mb-4">Eco-Report!</h3>
-            <div className="text-slate-600 whitespace-pre-wrap leading-relaxed text-xl">
-                {report.split('\n').map((line, index) => (
-                    <React.Fragment key={index}>
-                        {line}
-                        <br />
-                    </React.Fragment>
-                ))}
-            </div>
-            <button onClick={onClose} className="mt-8 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-3 px-6 rounded-lg w-full text-xl">Close</button>
-        </div>
-    </div>
-);
-
 const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action> }> = ({ state, dispatch }) => {
-    const [report, setReport] = useState<string>('');
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string>('');
-    const [showModal, setShowModal] = useState(false);
     
     useEffect(() => {
         dispatch({ type: 'CALCULATE_RESULTS' });
     }, [dispatch]);
     
-    useEffect(() => {
-        if (showModal) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-        }
-        return () => {
-            document.body.style.overflow = 'unset';
-        };
-    }, [showModal]);
-
-    const allTeamChoices = useMemo(() => state.teams.flatMap(t => 
-        t.answers.map(ans => ({
-            teamName: t.name,
-            scenarioTitle: t.scenario.title,
-            questionText: t.questions?.find(q => q.id === ans.questionId)?.text || 'Unknown',
-            choiceText: ans.choice.text,
-            score: ans.choice.score
-        }))
-    ), [state.teams]);
-
-    useEffect(() => {
-        if (state.status === GameStatus.SUMMARY && allTeamChoices.length > 0) {
-            const fetchConsequences = async () => {
-                setIsLoading(true); setError('');
-                try {
-                    const result = await generateConsequences(allTeamChoices);
-                    setReport(result);
-                } catch (err) {
-                    setError('Oh no! The AI reporter is on a coffee break.');
-                    setReport("Based on your choices, you've definitely made an impact! Reflect on the balance between convenience and what's best for our planet. Every small choice helps write a better future story.");
-                } finally { setIsLoading(false); }
-            };
-            fetchConsequences();
-        }
-    }, [state.status, allTeamChoices]);
-
     const rankedTeams = useMemo(() => 
         [...state.teams].sort((a, b) => a.score - b.score),
     [state.teams]);
 
     return (
         <div className="w-full max-w-7xl mx-auto">
-            {showModal && <ReportModal report={report} onClose={() => setShowModal(false)} />}
             <h2 className="text-6xl font-extrabold text-slate-800 mb-2 text-center animate-enter">Round {state.currentRound} of {state.totalRounds} Summary!</h2>
             <p className="text-2xl text-slate-500 mb-8 text-center animate-enter" style={{animationDelay: '100ms'}}>Team Rankings (Lowest Total Score Wins!)</p>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -779,17 +782,6 @@ const RoundSummary: React.FC<{ state: GameState; dispatch: React.Dispatch<Action
                     {rankedTeams.map((team, i) => (
                         <TeamResultCard key={team.id} team={team} index={i} rank={i + 1} />
                     ))}
-                     <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-xl animate-enter" style={{animationDelay: '800ms'}}>
-                        <h3 className="text-2xl font-bold text-violet-600 mb-3">AI Eco-Report</h3>
-                        {isLoading ? (
-                            <div className="flex items-center space-x-3 text-slate-500"><div className="w-8 h-8 border-4 border-t-violet-500 rounded-full animate-spin"></div><span className="font-semibold text-lg">Our AI is writing your climate story...</span></div>
-                        ) : (
-                            <>
-                                <p className="text-slate-600 text-lg line-clamp-3">{report}</p>
-                                <button onClick={() => setShowModal(true)} className="text-violet-600 font-bold text-lg mt-2 hover:underline">Read The Full Story →</button>
-                            </>
-                        )}
-                    </div>
                 </div>
             </div>
             <div className="text-center mt-12 animate-enter" style={{animationDelay: '900ms'}}>
