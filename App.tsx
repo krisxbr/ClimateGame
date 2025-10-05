@@ -631,11 +631,11 @@ const QuestionScreen: React.FC<{
                 {/* Left Column: Mission Details */}
                 <div className="bg-white/50 backdrop-blur-lg rounded-3xl p-6 lg:p-8 flex flex-col justify-center animate-enter border border-white/50 shadow-lg">
                     <div className="text-center lg:text-left">
-                        <h2 className="text-4xl sm:text-5xl font-extrabold text-slate-700 flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-4">
+                        <h2 className="text-5xl font-extrabold text-slate-700 flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-4">
                             <span className={`text-6xl p-3 rounded-2xl ${team.scenario.color} text-white`}>{ICONS[team.scenario.icon]}</span>
                             <span>{team.scenario.title}</span>
                         </h2>
-                        <p className="mt-6 text-xl sm:text-2xl text-slate-600 leading-relaxed">
+                        <p className="mt-6 text-2xl text-slate-600 leading-relaxed">
                             {team.scenario.description}
                         </p>
                     </div>
@@ -644,7 +644,7 @@ const QuestionScreen: React.FC<{
                 {/* Right Column: Question & Choices */}
                 <div className="animate-enter" style={{animationDelay: '200ms'}}>
                      <div className="bg-white rounded-3xl shadow-xl p-6 sm:p-8">
-                        <p className="text-2xl font-semibold text-slate-800 mb-8 leading-snug">{question.text}</p>
+                        <p className="text-3xl font-semibold text-slate-800 mb-10 leading-snug">{question.text}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {question.choices.map((choice, i) => (
                                 <button 
@@ -653,7 +653,7 @@ const QuestionScreen: React.FC<{
                                     className="text-left p-5 bg-slate-50 rounded-xl hover:bg-violet-100 hover:ring-4 hover:ring-violet-200 transition-all transform hover:scale-105 animate-enter"
                                     style={{animationDelay: `${300 + i * 100}ms`}}
                                 >
-                                    <p className="text-slate-700 text-lg">{choice.text}</p>
+                                    <p className="text-slate-700 text-xl">{choice.text}</p>
                                 </button>
                             ))}
                         </div>
