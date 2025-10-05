@@ -629,7 +629,7 @@ const QuestionScreen: React.FC<{
             />
             <div className="w-full max-w-7xl mx-auto flex-grow grid lg:grid-cols-2 gap-8 items-center py-8 px-4 sm:px-6">
                 {/* Left Column: Mission Details */}
-                <div className="bg-white/50 backdrop-blur-lg rounded-3xl p-6 lg:p-8 h-full flex flex-col justify-center animate-enter border border-white/50 shadow-lg">
+                <div className="bg-white/50 backdrop-blur-lg rounded-3xl p-6 lg:p-8 flex flex-col justify-center animate-enter border border-white/50 shadow-lg">
                     <div className="text-center lg:text-left">
                         <h2 className="text-4xl sm:text-5xl font-extrabold text-slate-700 flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-4">
                             <span className={`text-6xl p-3 rounded-2xl ${team.scenario.color} text-white`}>{ICONS[team.scenario.icon]}</span>
