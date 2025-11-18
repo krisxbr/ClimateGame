@@ -1,6 +1,6 @@
 import React, { useReducer, useCallback, useMemo, useState, useEffect } from 'react';
-import { GameState, Team, Scenario, Action, Choice, GameStatus, Achievement, Question, Answer } from './gameData.ts';
-import { SCENARIOS, INITIAL_STATE, ICONS, C_LEVEL_STYLES, ACHIEVEMENTS, AVATARS, INDIVIDUAL_SCORING, TEMP_SCORING } from './gameData.ts';
+import { GameState, Team, Scenario, Action, Choice, GameStatus, Achievement, Question, Answer } from './gameData';
+import { SCENARIOS, INITIAL_STATE, ICONS, C_LEVEL_STYLES, ACHIEVEMENTS, AVATARS, INDIVIDUAL_SCORING, TEMP_SCORING, THEME_ICONS } from './gameData';
 
 // Helper to shuffle an array
 const shuffleArray = <T,>(array: T[]): T[] => {
@@ -30,6 +30,7 @@ const gameReducer = (state: GameState, action: Action): GameState => {
             }
             const selectedQuestions = selectedPool.slice(0, questionsPerRound).map((q, i) => ({
                 ...q,
+                originalId: q.id,
                 id: `${q.id}-${i}`,
                 choices: shuffleArray(q.choices)
             }));
@@ -144,6 +145,7 @@ const gameReducer = (state: GameState, action: Action): GameState => {
             }
             const selectedQuestions = selectedPool.slice(0, state.questionsPerRound).map((q, i) => ({
                 ...q,
+                originalId: q.id,
                 id: `${q.id}-${i}`,
                 choices: shuffleArray(q.choices)
             }));
@@ -644,6 +646,17 @@ const QuestionScreen: React.FC<{
                 {/* Right Column: Question & Choices */}
                 <div className="animate-enter" style={{animationDelay: '200ms'}}>
                      <div className="bg-white rounded-3xl shadow-xl p-6 sm:p-8">
+                        <div className="text-right">
+                            <span className="inline-block text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded mb-2">
+                                ID: {question.originalId || question.id}
+                            </span>
+                        </div>
+                        {question.theme && (
+                            <div className="mb-4 flex items-center gap-2">
+                                <span className="text-2xl">{THEME_ICONS[question.theme] || '❓'}</span>
+                                <h3 className="text-lg font-bold text-violet-600 uppercase tracking-wider">{question.theme}</h3>
+                            </div>
+                        )}
                         <p className="text-3xl font-semibold text-slate-800 mb-10 leading-snug">{question.text}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {question.choices.map((choice, i) => (
@@ -745,7 +758,20 @@ const SummaryScreen: React.FC<{
                                                     if (!question || !question.fact) return null;
                                                     return (
                                                         <div key={question.id}>
-                                                            <p className="font-semibold text-slate-800 text-lg">{question.text}</p>
+                                                            <div className="flex justify-between items-start gap-4">
+                                                                <div className="flex-grow">
+                                                                    {question.theme && (
+                                                                        <p className="text-sm font-bold text-violet-500 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+                                                                            {THEME_ICONS[question.theme] || '❓'}
+                                                                            <span>{question.theme}</span>
+                                                                        </p>
+                                                                    )}
+                                                                    <p className="font-semibold text-slate-800 text-lg">{question.text}</p>
+                                                                </div>
+                                                                <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded whitespace-nowrap mt-1">
+                                                                    ID: {question.originalId || question.id}
+                                                                </span>
+                                                            </div>
                                                              <div className="mt-2 text-slate-700 bg-violet-50 p-3 rounded-lg border border-violet-200">
                                                                 <div className="flex justify-between items-center gap-2">
                                                                     <p><span className="font-bold text-violet-800">Your answer:</span> {answer.choice.text}</p>

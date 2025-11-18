@@ -1,11 +1,8 @@
-import React from 'react';
-
 // --- TYPES ---
 
 export enum GameStatus {
   LOBBY = 'LOBBY',
   SCENARIO_ASSIGNMENT = 'SCENARIO_ASSIGNMENT',
-  SCENARIO_SELECTION = 'SCENARIO_SELECTION', // No longer used in the main flow
   PLAYING = 'PLAYING',
   SUMMARY = 'SUMMARY',
 }
@@ -23,6 +20,7 @@ export interface Fact {
 
 export interface Question {
   id: string;
+  originalId?: string;
   text: string;
   choices: Choice[];
   theme?: string;
@@ -84,7 +82,6 @@ export interface GameState {
 export type Action =
   | { type: 'START_GAME'; payload: { teams: {name: string, avatar: string, players: string[]}[], questionsPerRound: 3 | 4 | 6, totalRounds: number } }
   | { type: 'PROCEED_TO_PLAY' }
-  | { type: 'SELECT_SCENARIO'; payload: Scenario }
   | { type: 'ANSWER_QUESTION'; payload: { teamId: string; questionId: string; choice: Choice } }
   | { type: 'CALCULATE_RESULTS' }
   | { type: 'START_NEXT_ROUND' }
@@ -103,6 +100,13 @@ export const ICONS = {
   token: '🪙',
   sun: '☀️',
   snowflake: '❄️'
+};
+
+export const THEME_ICONS: { [key: string]: string } = {
+  "Personal Mobility": '🚗',
+  "Food and Dietary Habits": '🍎',
+  "Fashion and Clothing Habits": '👕',
+  "Digital Life, Tools and Devices": '📱',
 };
 
 export const AVATARS = ['😊', '😎', '🚀', '🦄', '🤖', '🦊', '🐼', '🐸', '🦁', '🐯', '🐙', '🦖'];
@@ -284,16 +288,16 @@ export const TEMP_SCORING: { [key: number]: { [key: number]: { range: [number, n
 export const SCENARIOS: Scenario[] = [
   {
     id: 's1',
-    title: 'Person Going to a Job Interview',
+    title: 'The Life-Changing Interview',
     icon: 'briefcase',
     color: 'bg-blue-500',
-    description: 'CHALLENGE: The Life-Changing Interview. The most innovative tech company in town is waiting for you. You have one chance to impress. Every choice you make – from your pre-interview lunch to how you arrive – says something about who you are. The future starts today: which path will you choose? Mindful decisions or immediate convenience?',
+    description: 'The most innovative tech company in town is waiting for you. You have one chance to impress. Every choice you make - from your pre-interview lunch to how you arrive - says something about who you are. The future starts today: which path will you choose? Mindful decisions or immediate convenience?',
     imageUrl: 'https://storage.googleapis.com/aistudio-bucket/google-codelab-assets/climate-game/interview.svg',
     questions: {
       "Personal Mobility": [
         {
           id: 's1-m-1',
-          text: 'Your interview is across town. How do you ensure you arrive looking crisp and punctual?',
+          text: 'Your interview is across town. How do you ensure you arrive looking neat and on time?',
           fact: { text: "In the EU, transport is responsible for 25% of greenhouse gas emissions, with passenger cars contributing 44% of that total. Cycling produces zero.", url: "https://www.eea.europa.eu/en/analysis/indicators/greenhouse-gas-emissions-from-transport"},
           choices: [
             { id: 'c1', text: 'Cycle the whole way, leaving extra time to cool down and change.', score: 1 },
@@ -305,13 +309,13 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's1-m-2',
-          text: 'A sudden downpour is forecast for your commute time. What\'s your plan?',
+          text: 'Heavy rain is forecast for your commute time. How do you plan to manage?',
           fact: { text: "Urban stormwater runoff from roads is a major source of water pollution, carrying oil, heavy metals, and tire wear particles into waterways.", url: "https://www.epa.gov/npdes/stormwater-discharges-municipal-sources"},
           choices: [
             { id: 'c1', text: 'Trust your waterproof gear and stick with your bike or walk plan.', score: 1 },
             { id: 'c2', text: 'Switch to the bus system to stay dry without extra cost.', score: 2 },
-            { id: 'c3', text: 'Use a rideshare app, accepting the potential surge pricing.', score: 3 },
-            { id: 'c4', text: 'Rent a car for the day to have a dry shelter on standby.', score: 4 },
+            { id: 'c3', text: 'Use a rideshare app, accepting the potential higher prices.', score: 3 },
+            { id: 'c4', text: 'Rent a car for the day to have a dry shelter ready to use.', score: 4 },
             { id: 'c5', text: 'Call a taxi last minute to avoid any contact with the weather.', score: 5 },
           ],
         },
@@ -321,7 +325,7 @@ export const SCENARIOS: Scenario[] = [
           fact: { text: "Converting natural land for business parks and associated infrastructure like parking lots contributes to habitat loss and soil sealing, increasing flood risks.", url: "https://www.eea.europa.eu/en/topics/in-depth/land-use?activeTab=fa515f0c-9ab0-493c-b4cd-58a32dfaae0a"},
           choices: [
             { id: 'c1', text: 'Take transit to the closest point and walk the final 20 minutes.', score: 1 },
-            { id: 'c2', text: 'Coordinate with another applicant to share a cab from the station.', score: 2 },
+            { id: 'c2', text: 'Coordinate with another applicant to share a taxi from the station.', score: 2 },
             { id: 'c3', text: 'Rent a car for flexibility to explore the area afterwards.', score: 3 },
             { id: 'c4', text: 'Drive your own car for maximum reliability and comfort.', score: 4 },
             { id: 'c5', text: 'Use a door-to-door shuttle service for a premium, direct ride.', score: 5 },
@@ -329,26 +333,26 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's1-m-4',
-          text: 'You\'re running behind schedule. How do you make up time on the go?',
+          text: 'You are late. How do you save time while traveling?',
            fact: { text: "Idling in traffic congestion significantly increases fuel consumption and local air pollution. A study found congestion costs in the EU are nearly €100 billion annually.", url: "https://www.europeandatajournalism.eu/cp_data_news/road-traffic-pollution-costs-billions-in-lost-wellbeing-in-european-cities/"},
           choices: [
-            { id: 'c1', text: 'Pedal faster on your bike; you\'ll just be more warmed up.', score: 1 },
+            { id: 'c1', text: 'Pedal faster on your bike; you will just be more warmed up.', score: 1 },
             { id: 'c2', text: 'Check the app for a faster transit route with more transfers.', score: 2 },
-            { id: 'c3', text: 'Hail an e-scooter to cut through traffic faster than a car.', score: 3 },
+            { id: 'c3', text: 'Get an e-scooter to move through traffic faster than a car.', score: 3 },
             { id: 'c4', text: 'Book a priority rideshare that minimizes stops for others.', score: 4 },
             { id: 'c5', text: 'Order a private taxi that takes the fastest toll road.', score: 5 },
           ],
         },
         {
           id: 's1-m-5',
-          text: 'There\'s a major transit delay on your planned route. What\'s your backup plan?',
+          text: 'There is a major transit delay on your planned route. What is your backup plan?',
           fact: { text: "Public transport is far more efficient. A full bus can take 50 cars off the road, reducing congestion, CO2, and particulate matter (PM2.5) emissions.", url: "https://www.uitp.org/news/public-transport-mobility-for-yeu-and-benefits-for-all/"},
           choices: [
             { id: 'c1', text: 'Check the app for any alternative bus or train lines, accepting a longer trip.', score: 1 },
-            { id: 'c2', text: 'Quickly walk to a different transit stop to bypass the disruption.', score: 2 },
+            { id: 'c2', text: 'Quickly walk to a different transit stop to avoid the problem.', score: 2 },
             { id: 'c3', text: 'Use a rideshare to get to a functioning part of the transit network.', score: 3 },
             { id: 'c4', text: 'Immediately rent an e-scooter to navigate around the congestion.', score: 4 },
-            { id: 'c5', text: 'Hail the first available taxi to get you the entire way without delays.', score: 5 },
+            { id: 'c5', text: 'Get the first available taxi to take you the entire way without delays.', score: 5 },
           ],
         },
         {
@@ -356,9 +360,9 @@ export const SCENARIOS: Scenario[] = [
           text: 'The interview is a multi-day process. How will you handle the commute tomorrow?',
           fact: { text: "The average petrol car in the EU emits about 2.2 tonnes of CO2 per year. Avoiding that commute for a year has a massive impact.", url: "https://www.europarl.europa.eu/topics/en/article/20190313STO31218/co2-emissions-from-cars-facts-and-figures-infographics"},
           choices: [
-            { id: 'c1', text: 'Scout the route today and commit to cycling again for consistency.', score: 1 },
+            { id: 'c1', text: 'Check the route today and commit to cycling again for consistency.', score: 1 },
             { id: 'c2', text: 'Pre-purchase a transit pass for the week to simplify your journey.', score: 2 },
-            { id: 'c3', text: 'Book the same rideshare service to replicate today\'s stress-free arrival.', score: 3 },
+            { id: 'c3', text: 'Book the same rideshare service to repeat today\'s stress-free arrival.', score: 3 },
             { id: 'c4', text: 'Extend your rental car agreement for ultimate convenience.', score: 4 },
             { id: 'c5', text: 'Drive your own car again, now that you know the route and parking.', score: 5 },
           ],
@@ -370,11 +374,11 @@ export const SCENARIOS: Scenario[] = [
           text: 'You need a quick breakfast that will keep you focused until the interview. You choose?',
           fact: { text: "Producing 1 kg of beef requires approximately 15,000 liters of water, mostly for growing animal feed, compared to 250 liters for 1 kg of oats.", url: "https://waterfootprint.org/en/water-footprint/product-water-footprint/water-footprint-crop-and-animal-products/"},
           choices: [
-            { id: 'c1', text: 'Soaked oats with nuts and seeds prepared at home.', score: 1 },
+            { id: 'c1', text: 'Oatmeal with nuts and seeds prepared at home.', score: 1 },
             { id: 'c2', text: 'A fresh piece of fruit and a coffee from the local bakery.', score: 2 },
             { id: 'c3', text: 'A protein bar and a bottled juice for on-the-go efficiency.', score: 3 },
-            { id: 'c4', text: 'A breakfast sandwich and smoothie from a grab-and-go chain.', score: 4 },
-            { id: 'c5', text: 'A heated pastry and large flavored coffee from a drive-through.', score: 5 },
+            { id: 'c4', text: 'A breakfast sandwich and smoothie from a fast-food restaurant.', score: 4 },
+            { id: 'c5', text: 'A heated pastry and large flavored coffee from a drive-in restaurant.', score: 5 },
           ],
         },
         {
@@ -385,19 +389,19 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Water from your tap in a container you already own.', score: 1 },
             { id: 'c2', text: 'Home-brewed coffee or tea in your thermal mug.', score: 2 },
             { id: 'c3', text: 'A freshly squeezed juice in a glass bottle from a cafe.', score: 3 },
-            { id: 'c4', text: 'A branded energy drink from the convenience store.', score: 4 },
-            { id: 'c5', text: 'A large fountain soda with ice in a disposable cup.', score: 5 },
+            { id: 'c4', text: 'A branded energy drink from a convenience store.', score: 4 },
+            { id: 'c5', text: 'A large soft drink from a dispenser in a disposable cup.', score: 5 },
           ],
         },
         {
           id: 's1-f-3',
-          text: 'Lunch is with the team. How do you navigate the meal?',
+          text: 'Lunch is with the team. How do you choose your meal?',
           fact: { text: "Ruminant animals like cows produce methane, a potent GHG (GreenHouse Gases) ~28x stronger than CO2 over 100 years. A plant-based diet can reduce food-related emissions by up to 73%.", url: "https://www.eea.europa.eu/en/analysis/maps-and-charts/methane-emission-trend-eu"},
           choices: [
             { id: 'c1', text: 'Suggest a place known for simple, local ingredient-based dishes.', score: 1 },
             { id: 'c2', text: 'Order a vegetarian dish from the menu they recommend.', score: 2 },
             { id: 'c3', text: 'Choose the popular fish or chicken dish everyone else is having.', score: 3 },
-            { id: 'c4', text: 'Go for the imported steak, a sure sign of success and taste.', score: 4 },
+            { id: 'c4', text: 'Go for the imported steak, a symbol of success and taste.', score: 4 },
             { id: 'c5', text: 'Insist on a famous burger chain for a casual, predictable meal.', score: 5 },
           ],
         },
@@ -408,9 +412,9 @@ export const SCENARIOS: Scenario[] = [
           choices: [
             { id: 'c1', text: 'A piece of high-quality, locally made dark chocolate.', score: 1 },
             { id: 'c2', text: 'A craft beer or cocktail at a nearby independent bar.', score: 2 },
-            { id: 'c3', text: 'A slice of cake from a well-known patisserie chain.', score: 3 },
+            { id: 'c3', text: 'A slice of cake from a well-known bakery chain.', score: 3 },
             { id: 'c4', text: 'A shareable platter of imported snacks and drinks.', score: 4 },
-            { id: 'c5', text: 'A large, decadent dessert from a delivery app.', score: 5 },
+            { id: 'c5', text: 'A large, rich dessert from a delivery app.', score: 5 },
           ],
         },
         {
@@ -418,8 +422,8 @@ export const SCENARIOS: Scenario[] = [
           text: 'You want a pre-interview snack to calm your nerves. You grab:',
           fact: { text: "Almond farming is highly water-intensive. It takes about 12 liters of water to grow a single almond, primarily in regions prone to drought like California.", url: "https://www.theguardian.com/environment/2020/jan/28/what-plant-milk-should-i-drink-almond-killing-bees-aoe"},
           choices: [
-            { id: 'c1', text: 'A handful of almonds from your bulk food stash.', score: 1 },
-            { id: 'c2', text: 'A piece of fruit from a nearby grocer\'s loose display.', score: 2 },
+            { id: 'c1', text: 'A handful of almonds from your bulk food supply.', score: 1 },
+            { id: 'c2', text: 'A piece of fruit sold individually at a nearby store.', score: 2 },
             { id: 'c3', text: 'A single-serving bag of pretzels from a vending machine.', score: 3 },
             { id: 'c4', text: 'A plastic tub of protein pudding for a quick boost.', score: 4 },
             { id: 'c5', text: 'A small bag of individually wrapped chocolates.', score: 5 },
@@ -441,25 +445,25 @@ export const SCENARIOS: Scenario[] = [
       "Fashion and Clothing Habits": [
         {
           id: 's1-c-1',
-          text: 'You need to look sharp. How do you source your interview outfit?',
+          text: 'You need to look professional. How do you source your interview outfit?',
           fact: { text: "The fashion industry is responsible for ~10% of global carbon emissions—more than international flights and maritime shipping combined.", url: "https://unece.org/forestry/news/fashion-environmental-and-social-emergency-can-also-drive-progress-towards"},
           choices: [
             { id: 'c1', text: 'Wear a trusted, classic combination you already own.', score: 1 },
-            { id: 'c2', text: 'Borrow a key statement piece from a friend who is your size.', score: 2 },
+            { id: 'c2', text: 'Borrow a key special piece from a friend who is your size.', score: 2 },
             { id: 'c3', text: 'Rent a designer outfit for a fraction of the retail price.', score: 3 },
             { id: 'c4', text: 'Buy a new outfit from a sustainable-focused online brand.', score: 4 },
-            { id: 'c5', text: 'Get a great deal on a new suit from a fast-fashion retailer.', score: 5 },
+            { id: 'c5', text: 'Get a great deal on a new suit from a cheap fashion store.', score: 5 },
           ],
         },
         {
           id: 's1-c-2',
-          text: 'Your shoes need to be impeccable. How do you ensure they are?',
+          text: 'Your shoes need to be perfect. How do you ensure they are?',
           fact: { text: "The production of synthetic materials like polyester is energy-intensive and relies on fossil fuels. It also sheds microplastics with every wash.", url: "https://www.pbs.org/newshour/science/laundry-is-a-top-source-of-microplastic-pollution-heres-how-to-clean-your-clothes-more-sustainably"},
           choices: [
             { id: 'c1', text: 'Clean and polish the best pair you already have.', score: 1 },
-            { id: 'c2', text: 'Resole and refresh your old reliable dress shoes.', score: 2 },
-            { id: 'c3', text: 'Buy a like-new pair from a high-end consignment store.', score: 3 },
-            { id: 'c4', text: 'Purchase new leather shoes from a heritage brand.', score: 4 },
+            { id: 'c2', text: 'Repair the soles and refresh your old reliable dress shoes.', score: 2 },
+            { id: 'c3', text: 'Buy a like-new pair from a high-end second-hand store.', score: 3 },
+            { id: 'c4', text: 'Purchase new leather shoes from a traditional brand.', score: 4 },
             { id: 'c5', text: 'Buy a cheap, stylish pair that you can discard after.', score: 5 },
           ],
         },
@@ -472,7 +476,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c2', text: 'Quickly iron just the collar and cuffs for a focused look.', score: 2 },
             { id: 'c3', text: 'Use a compact travel steamer for a full refresh.', score: 3 },
             { id: 'c4', text: 'Do a full ironing session on medium heat.', score: 4 },
-            { id: 'c5', text: 'Rewash the shirt and use the dryer\'s high-heat cycle.', score: 5 },
+            { id: 'c5', text: "Rewash the shirt and use the dryer's high-heat cycle.", score: 5 },
           ],
         },
         {
@@ -480,21 +484,21 @@ export const SCENARIOS: Scenario[] = [
           text: 'After the interview, how do you care for your outfit?',
           fact: { text: "Washing clothes in hot water (60°C) uses up to 90% more energy than a 30°C wash. Using cooler water saves significant energy and reduces microplastic release.", url: "https://www.cleaninginstitute.org/industry-priorities/outreach/cold-water-saves"},
           choices: [
-            { id: 'c1', text: 'Air it out and spot-clean any small marks.', score: 1 },
+            { id: 'c1', text: 'Let it air and clean small marks with a cloth.', score: 1 },
             { id: 'c2', text: 'Hand-wash delicate items and hang them to dry.', score: 2 },
             { id: 'c3', text: 'Machine wash on a cool, gentle cycle.', score: 3 },
-            { id: 'c4', text: 'Machine wash with bleach and tumble dry to sterilize.', score: 4 },
+            { id: 'c4', text: 'Machine wash with bleach and machine dry to sanitize.', score: 4 },
             { id: 'c5', text: 'Send it all for professional dry cleaning to be perfect for next time.', score: 5 },
           ],
         },
         {
           id: 's1-c-5',
-          text: 'You notice a small scuff on your shoe right before leaving. You:',
+          text: 'You notice a small scratch on your shoe right before leaving. You:',
           fact: { text: "Shoe production has a high environmental cost. A typical pair of running shoes generates ~13 kg of CO2 emissions due to complex manufacturing processes.", url: "https://news.mit.edu/2013/footwear-carbon-footprint-0522"},
           choices: [
-            { id: 'c1', text: 'Buff it quickly with the back of your sock; it\'s barely noticeable.', score: 1 },
+            { id: 'c1', text: 'Polish it quickly with the back of your sock; it\'s barely noticeable.', score: 1 },
             { id: 'c2', text: 'Use a natural wax pencil you have for such minor emergencies.', score: 2 },
-            { id: 'c3', text: 'Pop into a cobbler for a quick, on-the-spot polish.', score: 3 },
+            { id: 'c3', text: 'Pop into a shoe repair shop for a quick, immediate polish.', score: 3 },
             { id: 'c4', text: 'Buy a new shoe polish kit to do a proper job.', score: 4 },
             { id: 'c5', text: 'Decide it\'s a sign to buy a new pair on your way home.', score: 5 },
           ],
@@ -504,8 +508,8 @@ export const SCENARIOS: Scenario[] = [
           text: 'You want to make a strong first impression with an accessory. You:',
           fact: { text: '"Fast fashion" relies on cheap, low-quality materials designed for short lifespans, creating enormous textile waste. The EU discards about 5.8 million tonnes of textiles yearly.', url: "https://www.eea.europa.eu/publications/textiles-in-europes-circular-economy"},
           choices: [
-            { id: 'c1', text: 'Wear your grandfather\'s classic watch, a timeless piece.', score: 1 },
-            { id: 'c2', text: 'Borrow a tasteful silk tie from a roommate.', score: 2 },
+            { id: 'c1', text: 'Wear your grandfather\'s classic watch, a traditional piece.', score: 1 },
+            { id: 'c2', text: 'Borrow an elegant silk tie from a roommate.', score: 2 },
             { id: 'c3', text: 'Buy a new tie from a department store\'s mid-range collection.', score: 3 },
             { id: 'c4', text: 'Order a trendy, statement-making belt online with express shipping.', score: 4 },
             { id: 'c5', text: 'Pick up a designer-branded accessory at the airport.', score: 5 },
@@ -522,7 +526,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c2', text: 'Do a full charge and only use it for essential maps and calls.', score: 2 },
             { id: 'c3', text: 'Carry a compact, low-capacity power bank just in case.', score: 3 },
             { id: 'c4', text: 'Use a high-speed power bank to stream music and navigate.', score: 4 },
-            { id: 'c5', text: 'Keep it plugged into a portable charger all day for 100% uptime.', score: 5 },
+            { id: 'c5', text: 'Keep it plugged into a portable charger all day for full battery.', score: 5 },
           ],
         },
         {
@@ -533,8 +537,8 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Print a single copy on recycled paper to leave behind.', score: 1 },
             { id: 'c2', text: 'Have it ready on your tablet to display smoothly.', score: 2 },
             { id: 'c3', text: 'Email a PDF to the interviewers beforehand as a preview.', score: 3 },
-            { id: 'c4', text: 'Build an interactive online portfolio hosted on a server.', score: 4 },
-            { id: 'c5', text: 'Use a high-resolution projector for an immersive presentation.', score: 5 },
+            { id: 'c4', text: 'Build an interactive online portfolio available on the web.', score: 4 },
+            { id: 'c5', text: 'Use a high-resolution projector for an engaging presentation.', score: 5 },
           ],
         },
         {
@@ -545,7 +549,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Study the route beforehand and rely on street signs.', score: 1 },
             { id: 'c2', text: 'Download an offline map to avoid using live data.', score: 2 },
             { id: 'c3', text: 'Use standard live GPS navigation on your phone.', score: 3 },
-            { id: 'c4', text: 'Run two navigation apps simultaneously to compare ETAs.', score: 4 },
+            { id: 'c4', text: 'Run two navigation apps simultaneously to compare arrival times.', score: 4 },
             { id: 'c5', text: 'Stream a video map live for the most visual, real-time guidance.', score: 5 },
           ],
         },
@@ -554,7 +558,7 @@ export const SCENARIOS: Scenario[] = [
           text: 'After the interview, how do you follow up?',
           fact: { text: "An average email has a carbon footprint of about 4g CO2e. This adds up to over 150 million tonnes of CO2 annually from emails alone.", url: "https://www.theguardian.com/environment/2024/oct/31/concerned-about-your-data-use-here-is-the-carbon-footprint-of-an-average-day-of-emails-whatsapps-and-more"},
           choices: [
-            { id: 'c1', text: 'Send a concise thank-you email the same day.', score: 1 },
+            { id: 'c1', text: 'Send a short thank-you email the same day.', score: 1 },
             { id: 'c2', text: 'Email and send a personalized connection request on LinkedIn.', score: 2 },
             { id: 'c3', text: 'Send an email and a thank-you message via the company\'s portal.', score: 3 },
             { id: 'c4', text: 'Email and share a positive post about the company culture online.', score: 4 },
@@ -570,7 +574,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c2', text: 'Bring your own tablet to control the presentation smoothly.', score: 2 },
             { id: 'c3', text: 'Upload it to a cloud service for easy access from any device.', score: 3 },
             { id: 'c4', text: 'Create a video presentation and host it on a streaming platform.', score: 4 },
-            { id: 'c5', text: 'Develop a complex interactive website for a fully immersive experience.', score: 5 },
+            { id: 'c5', text: 'Develop a complex interactive website for a complete experience.', score: 5 },
           ],
         },
         {
@@ -580,8 +584,8 @@ export const SCENARIOS: Scenario[] = [
           choices: [
             { id: 'c1', text: 'Read a physical book or magazine to disconnect completely.', score: 1 },
             { id: 'c2', text: 'Listen to a podcast downloaded earlier over Wi-Fi.', score: 2 },
-            { id: 'c3', text: 'Scroll through social media feeds to unwind.', score: 3 },
-            { id: 'c4', text: 'Play a graphics-intensive online mobile game.', score: 4 },
+            { id: 'c3', text: 'Scroll through social media feeds to relax.', score: 3 },
+            { id: 'c4', text: 'Play a high-quality graphics game on your phone.', score: 4 },
             { id: 'c5', text: 'Stream a high-definition movie on your phone using mobile data.', score: 5 },
           ],
         },
@@ -590,13 +594,13 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 's2',
-    title: 'Person Preparing for One Year Abroad',
+    title: 'A Year of Service Abroad',
     icon: 'volunteer',
     color: 'bg-emerald-500',
-    description: "CHALLENGE: Making a difference... Thoughtfully. You've won a scholarship for a year of community service in a European country other than the one you live in. The paradox is clear: traveling to help local communities? It's your chance to make a difference, but every choice counts. How will you balance your contribution with the impact of your journey?",
+    description: "Making a difference... Thoughtfully. You've won a scholarship for a year of community service in a European country other than the one you live in. The paradox is clear: traveling to help local communities? It's your chance to make a difference, but every choice counts. How will you balance your contribution with the impact of your journey?",
     imageUrl: 'https://storage.googleapis.com/aistudio-bucket/google-codelab-assets/climate-game/volunteer.svg',
     questions: {
-      Mobility: [
+      "Personal Mobility": [
         {
           id: 's2-m-1',
           text: 'Your main luggage is ready. How will you travel the 1200 km to your volunteer site?',
@@ -605,7 +609,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Take a direct overnight train, sharing a cabin to reduce costs.', score: 1 },
             { id: 'c2', text: 'Drive alone in your own car, splitting the journey into two shorter days.', score: 2 },
             { id: 'c3', text: 'Join a rideshare group to split the fuel cost for the two-day drive.', score: 3 },
-            { id: 'c4', text: 'Fly with a budget airline for the long leg and use a local bus for the last stretch.', score: 4 },
+            { id: 'c4', text: 'Fly with a budget airline for the main part and use a local bus for the last part.', score: 4 },
             { id: 'c5', text: 'Book a direct flight for speed and check one large suitcase for convenience.', score: 5 },
           ],
         },
@@ -615,7 +619,7 @@ export const SCENARIOS: Scenario[] = [
           fact: { text: "Air freight is highly carbon-intensive. Shipping 1 ton of cargo by plane emits over 50 times more CO2 than shipping it by container ship.", url: "https://ourworldindata.org/travel-carbon-footprint"},
           choices: [
             { id: 'c1', text: 'Ask a friend who is driving later to bring them for you.', score: 1 },
-            { id: 'c2', text: 'Ship them via standard ground freight well in advance of your arrival.', score: 2 },
+            { id: 'c2', text: 'Ship them via standard ground delivery well in advance of your arrival.', score: 2 },
             { id: 'c3', text: 'Fit what you can in your luggage and plan to buy the rest locally.', score: 3 },
             { id: 'c4', text: 'Rent a small van for the trip to have space for everything.', score: 4 },
             { id: 'c5', text: 'Pay for extra checked baggage on your flight to bring them with you.', score: 5 },
@@ -627,7 +631,7 @@ export const SCENARIOS: Scenario[] = [
           fact: { text: 'Empty "deadhead" miles, where a vehicle travels without a passenger, are a significant source of inefficiency and unnecessary emissions in personal transport.', url: "https://www.epa.gov/greenvehicles/greenhouse-gas-emissions-typical-passenger-vehicle"},
           choices: [
             { id: 'c1', text: 'Accept gratefully, as it\'s on their way to work.', score: 1 },
-            { id: 'c2', text: 'Suggest meeting at a central transit hub to minimize their detour.', score: 2 },
+            { id: 'c2', text: 'Suggest meeting at a central transport stop to minimize their detour.', score: 2 },
             { id: 'c3', text: 'Ask them to pick you up very early to avoid traffic.', score: 3 },
             { id: 'c4', text: 'Politely decline and order a ride-share for door-to-door ease.', score: 4 },
             { id: 'c5', text: 'Accept and also ask for a quick stop elsewhere on the way.', score: 5 },
@@ -635,14 +639,14 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's2-m-4',
-          text: 'Your flight has a long layover. How will you pass the time?',
+          text: 'Your flight has a long wait. How will you pass the time?',
           fact: { text: "Airport operations, including ground support equipment and energy for terminals, contribute significantly to local air pollution and CO2 emissions.", url: "https://www.easa.europa.eu/eco/airport-carbon-accreditation"},
           choices: [
-            { id: 'c1', text: 'Stay airside and read a book, avoiding extra movement.', score: 1 },
+            { id: 'c1', text: 'Stay in the airport area and read a book, avoiding extra movement.', score: 1 },
             { id: 'c2', text: 'Take a short train into the city for a quick walk alone.', score: 2 },
             { id: 'c3', text: 'Take a bus to the nearest mall to do some last-minute shopping.', score: 3 },
             { id: 'c4', text: 'Meet a local friend who drives to the airport for a coffee.', score: 4 },
-            { id: 'c5', text: 'Book a private capsule at an airport hotel to nap and shower.', score: 5 },
+            { id: 'c5', text: 'Book a private sleeping room at an airport hotel to nap and shower.', score: 5 },
           ],
         },
         {
@@ -653,8 +657,8 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Use your credit card for all purchases to get the best rate.', score: 1 },
             { id: 'c2', text: 'Withdraw a small amount from an ATM at the airport to get you started.', score: 2 },
             { id: 'c3', text: 'Order currency from your home bank a week before you leave.', score: 3 },
-            { id: 'c4', text: 'Have a family member who traveled recently give you their leftovers.', score: 1 },
-            { id: 'c5', text: 'Exchange a large sum at the airport kiosk for full convenience.', score: 5 },
+            { id: 'c4', text: 'Have a family member who traveled recently give you their remaining currency.', score: 1 },
+            { id: 'c5', text: 'Exchange a large sum at the airport desk for full convenience.', score: 5 },
           ],
         },
         {
@@ -665,12 +669,12 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Take a local bus that connects directly to the village.', score: 1 },
             { id: 'c2', text: 'Pre-book a seat on a shuttle bus service with other volunteers.', score: 2 },
             { id: 'c3', text: 'Wait for a project coordinator who is picking up several people.', score: 1 },
-            { id: 'c4', text: 'Use a ride-hailing app for a direct, private trip.', score: 4 },
+            { id: 'c4', text: 'Use a taxi app for a direct, private trip.', score: 4 },
             { id: 'c5', text: 'Rent a car at the station for flexibility during your stay.', score: 5 },
           ],
         },
       ],
-      Food: [
+      "Food and Dietary Habits": [
         {
           id: 's2-f-1',
           text: 'What will you pack to eat during your long journey to the site?',
@@ -689,7 +693,7 @@ export const SCENARIOS: Scenario[] = [
           fact: { text: "Food miles matter. The global food system is responsible for about 30% of total energy consumption and contributes over 20% of global greenhouse gas emissions.", url: "https://www.nature.com/articles/s43016-020-0093-y"},
           choices: [
             { id: 'c1', text: 'I\'ll accept an invitation to eat with my host family or project lead.', score: 1 },
-            { id: 'c2', text: 'I\'ve packed some familiar snacks to tide me over until I can shop.', score: 2 },
+            { id: 'c2', text: 'I\'ve packed some familiar snacks to help me until I can shop.', score: 2 },
             { id: 'c3', text: 'I\'ll find a local supermarket and buy basics to cook a simple meal.', score: 3 },
             { id: 'c4', text: 'I\'ll walk around and grab a bite from a casual-looking local eatery.', score: 4 },
             { id: 'c5', text: 'I\'ll order a pizza delivery to my new room to unwind.', score: 5 },
@@ -697,7 +701,7 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's2-f-3',
-          text: 'What\'s your strategy for staying hydrated while traveling?',
+          text: 'What is your strategy for staying hydrated while traveling?',
           fact: { text: "The production of a 1-liter plastic water bottle requires ~3 liters of water and ~250ml of oil, and generates 100g of CO2.", url: "https://pacinst.org/publication/bottled-water-fact-sheet/"},
           choices: [
             { id: 'c1', text: 'I\'ll bring an empty reusable bottle and fill it after security.', score: 1 },
@@ -728,23 +732,23 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c2', text: 'Take a bus to a larger supermarket to stock up in one big trip.', score: 2 },
             { id: 'c3', text: 'Go to the local farmers\' market and buy fresh produce.', score: 1 },
             { id: 'c4', text: 'Order a large online delivery for convenience.', score: 4 },
-            { id: 'c5', text: 'Drive to a big-box store outside of town for the best prices.', score: 5 },
+            { id: 'c5', text: 'Drive to a large supermarket outside of town for the best prices.', score: 5 },
           ],
         },
         {
           id: 's2-f-6',
-          text: 'You\'re invited to a welcome potluck. What will you contribute?',
+          text: 'You are invited to a welcome dinner where everyone brings food. What will you contribute?',
           fact: { text: "Industrial agriculture relies heavily on nitrogen-based fertilizers, which are energy-intensive to produce and a major source of nitrous oxide, a potent GHG (GreenHouse Gases).", url: "https://www.ipcc.ch/report/ar6/wg3/"},
           choices: [
-            { id: 'c1', text: 'I\'ll buy ingredients at a local farm stand and make something new.', score: 1 },
+            { id: 'c1', text: 'I\'ll buy ingredients at a local farmers\' market and make something new.', score: 1 },
             { id: 'c2', text: 'I\'ll prepare a simple dish from my home country.', score: 2 },
             { id: 'c3', text: 'I\'ll offer to help with setup or cleanup instead of bringing food.', score: 1 },
-            { id: 'c4', text: 'I\'ll pick up a pre-made salad or dessert from a supermarket.', score: 4 },
+            { id: 'c4', text: 'I\'ll pick up a ready-made salad or dessert from a supermarket.', score: 4 },
             { id: 'c5', text: 'I\'ll bring imported beers or sodas that everyone might like.', score: 5 },
           ],
         },
       ],
-      Fashion: [
+      "Fashion and Clothing Habits": [
         {
           id: 's2-c-1',
           text: 'How will you assemble your core wardrobe for the year?',
@@ -771,11 +775,11 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's2-c-3',
-          text: 'What will you do with clothes you don\'t want to bring back?',
+          text: 'What will you do with clothes you are not going to bring back?',
           fact: { text: "Textile waste in landfills decomposes anaerobically, producing methane. Synthetic fibers like polyester can take hundreds of years to break down.", url: "https://www.epa.gov/facts-and-figures-about-materials-waste-and-recycling/textiles-material-specific-data"},
           choices: [
             { id: 'c1', text: 'I\'ll try to sell them online to other volunteers or students.', score: 1 },
-            { id: 'c2', text: 'I\'ll donate them to a local charity shop if they\'re still wearable.', score: 2 },
+            { id: 'c2', text: 'I\'ll donate them to a local charity if they\'re still wearable.', score: 2 },
             { id: 'c3', text: 'I\'ll leave them in the accommodation for the next person.', score: 3 },
             { id: 'c4', text: 'I\'ll pack everything I brought, no matter what.', score: 4 },
             { id: 'c5', text: 'I\'ll throw them away if they are worn out or stained.', score: 5 },
@@ -788,7 +792,7 @@ export const SCENARIOS: Scenario[] = [
           choices: [
             { id: 'c1', text: 'I\'ll hand-wash small items in my room and air-dry them.', score: 1 },
             { id: 'c2', text: 'I\'ll wear items multiple times to reduce washing frequency.', score: 2 },
-            { id: 'c3', text: 'I\'ll use a local laundromat and run full loads on a cold wash.', score: 3 },
+            { id: 'c3', text: 'I\'ll use a local laundromat and run full loads on a cold cycle.', score: 3 },
             { id: 'c4', text: 'I\'ll use a weekly drop-off service for convenience.', score: 4 },
             { id: 'c5', text: 'I\'ll wash clothes frequently in hot water to ensure they\'re clean.', score: 5 },
           ],
@@ -801,7 +805,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'I\'ll restyle and dress up the smartest outfit I brought.', score: 1 },
             { id: 'c2', text: 'I\'ll borrow something from another volunteer or a host.', score: 1 },
             { id: 'c3', text: 'I\'ll rent an outfit from a local service for the night.', score: 3 },
-            { id: 'c4', text: 'I\'ll buy a new outfit from a high-street fashion chain.', score: 4 },
+            { id: 'c4', text: 'I\'ll buy a new outfit from a regular fashion store.', score: 4 },
             { id: 'c5', text: 'I\'ll order several options online and return what I don\'t like.', score: 5 },
           ],
         },
@@ -810,15 +814,15 @@ export const SCENARIOS: Scenario[] = [
           text: 'What type of fabrics will make up most of your packed clothes?',
           fact: { text: "Synthetic fibers like polyester are derived from petroleum. Their production releases ethylene oxide and benzene, which are hazardous air pollutants.", url: "https://www.epa.gov/haps/ethylene-oxide"},
           choices: [
-            { id: 'c1', text: 'A mix of natural fibers like cotton and wool that I already own.', score: 2 },
+            { id: 'c1', text: 'A mix of natural materials like cotton and wool that I already own.', score: 2 },
             { id: 'c2', text: 'New clothes made from recycled polyester and organic cotton.', score: 3 },
-            { id: 'c3', text: 'A capsule wardrobe of high-quality natural fabrics I bought new.', score: 3 },
+            { id: 'c3', text: 'A minimal wardrobe of high-quality natural materials I bought new.', score: 3 },
             { id: 'c4', text: 'Mostly synthetic blends because they are lightweight and don\'t wrinkle.', score: 4 },
             { id: 'c5', text: 'Whatever is clean and in my closet, I\'m not fussy about fabric.', score: 5 },
           ],
         },
       ],
-      Digital: [
+      "Digital Life, Tools and Devices": [
         {
           id: 's2-d-1',
           text: 'How will you stay in touch with family and friends back home?',
@@ -833,13 +837,13 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's2-d-2',
-          text: 'How will you navigate your new city and country?',
+          text: 'How will you find your way around your new city and country?',
           fact: { text: "GPS navigation requires constant data exchange with satellites and ground networks. Using it for every short trip uses more energy than pre-planning a route.", url: "https://www.sciencedirect.com/science/article/abs/pii/S1361920916304553"},
           choices: [
             { id: 'c1', text: 'Buy a paper map and ask locals for directions.', score: 1 },
             { id: 'c2', text: 'Use offline downloaded maps on my phone to save data.', score: 2 },
             { id: 'c3', text: 'Use public transport apps that show live schedules.', score: 3 },
-            { id: 'c4', text: 'Figure it out by exploring on foot and learning the routes.', score: 1 },
+            { id: 'c4', text: 'Learn by exploring on foot and discovering the routes.', score: 1 },
             { id: 'c5', text: 'Use real-time GPS navigation on my phone for every trip.', score: 5 },
           ],
         },
@@ -869,7 +873,7 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's2-d-5',
-          text: 'You need a local phone number. What\'s your plan?',
+          text: 'You need a local phone number. What is your plan?',
           fact: { text: "E-waste is the fastest-growing waste stream in the EU. In 2019, only 42% of e-waste was officially collected and recycled.", url: "https://www.eea.europa.eu/publications/waste-electronics-and-electrical-equipment"},
           choices: [
             { id: 'c1', text: 'I\'ll rely on Wi-Fi and use messaging apps instead.', score: 1 },
@@ -896,13 +900,13 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 's3',
-    title: 'Dating',
+    title: 'Values-Based Romance Match!',
     icon: 'heart',
     color: 'bg-rose-500',
-    description: "CHALLENGE: Values-Based Romance Match! After weeks of chatting, it's time for the first date. You want to make an impression but also be consistent with your values. On this date, every choice counts: Charm or consciousness? Chemistry or considerate choices? Your chance to find someone who shares your principles!",
+    description: "After weeks of chatting, it's time for the first date. You want to make an impression but also be consistent with your values. On this date, every choice counts: Charm or consciousness? Chemistry or considerate choices? Your chance to find someone who shares your principles!",
     imageUrl: 'https://storage.googleapis.com/aistudio-bucket/google-codelab-assets/climate-game/date.svg',
     questions: {
-      Mobility: [
+      "Personal Mobility": [
         {
           id: 's3-m-1',
           text: 'How do you plan your travel to the date location?',
@@ -911,7 +915,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Walk or cycle, checking the route on an offline map app.', score: 1 },
             { id: 'c2', text: 'Take a direct bus or tram line.', score: 2 },
             { id: 'c3', text: 'Coordinate a carpool if your date is driving that way.', score: 3 },
-            { id: 'c4', text: 'Use a ride-hailing app just for yourself.', score: 4 },
+            { id: 'c4', text: 'Use a taxi app just for yourself.', score: 4 },
             { id: 'c5', text: 'Drive your own car alone for maximum convenience.', score: 5 },
           ],
         },
@@ -947,7 +951,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Plan a safe walking/cycling route home with lights.', score: 1 },
             { id: 'c2', text: 'Check and use the last available night bus or tram.', score: 2 },
             { id: 'c3', text: 'Arrange to share a taxi or ride with your date.', score: 3 },
-            { id: 'c4', text: 'Book a solo taxi for door-to-door convenience.', score: 4 },
+            { id: 'c4', text: 'Book a solo taxi for door-to-door service.', score: 4 },
             { id: 'c5', text: 'Drive yourself home alone, even if you\'re tired.', score: 5 },
           ],
         },
@@ -959,7 +963,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Pick a local, low-impact gift on your way by foot/bike.', score: 1 },
             { id: 'c2', text: 'Buy it along your public transport route.', score: 2 },
             { id: 'c3', text: 'Order from a local vendor with standard delivery.', score: 3 },
-            { id: 'c4', text: 'Make a special trip by car to a distant boutique.', score: 4 },
+            { id: 'c4', text: 'Make a special trip by car to a distant specialist shop.', score: 4 },
             { id: 'c5', text: 'Use express same-day shipping for a unique item.', score: 5 },
           ],
         },
@@ -971,12 +975,12 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Suggest a walking distance alternative to avoid extra travel.', score: 1 },
             { id: 'c2', text: 'Look up a direct public transport connection.', score: 2 },
             { id: 'c3', text: 'See if you can combine the trip with other errands.', score: 3 },
-            { id: 'c4', text: 'Use a ride-hailing app for the quickest option.', score: 4 },
+            { id: 'c4', text: 'Use a taxi app for the quickest option.', score: 4 },
             { id: 'c5', text: 'Drive separately to the new location.', score: 5 },
           ],
         },
       ],
-      Food: [
+      "Food and Dietary Habits": [
         {
           id: 's3-f-1',
           text: "You're planning a picnic date. What food do you bring?",
@@ -991,7 +995,7 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's3-f-2',
-          text: 'You\'re cooking a surprise dinner. What\'s your ingredient plan?',
+          text: 'You are cooking a surprise dinner. What is your ingredient plan?',
           fact: { text: 'Imported ingredients often have a large "virtual water" footprint, meaning the water used to produce them was extracted from often water-stressed regions.', url: "https://waterfootprint.org/en/water-footprint/national-water-footprint/"},
           choices: [
             { id: 'c1', text: 'Use foraged herbs and local, seasonal produce.', score: 1 },
@@ -1030,7 +1034,7 @@ export const SCENARIOS: Scenario[] = [
           text: 'What drinks do you serve with your home-cooked meal?',
           fact: { text: "The production of sugary drinks is water-intensive. It can take up to 300 liters of water to produce half a liter of soda, mostly for growing sugar crops.", url: "https://iopscience.iop.org/article/10.1088/1748-9326/ab3f8c"},
           choices: [
-            { id: 'c1', text: 'Tap water and homemade infused water or kombucha.', score: 1 },
+            { id: 'c1', text: 'Tap water and homemade infused water.', score: 1 },
             { id: 'c2', text: 'Homemade juice or punch in a large pitcher.', score: 2 },
             { id: 'c3', text: 'A mix of store-bought and homemade drinks.', score: 3 },
             { id: 'c4', text: 'Large plastic bottles of soda and juice.', score: 4 },
@@ -1050,7 +1054,7 @@ export const SCENARIOS: Scenario[] = [
           ],
         },
       ],
-      Fashion: [
+      "Fashion and Clothing Habits": [
         {
           id: 's3-c-1',
           text: 'Where do you look for an outfit for this important date?',
@@ -1077,7 +1081,7 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's3-c-3',
-          text: 'Your date suggests an activity you\'re not dressed for. What now?',
+          text: 'Your date suggests an activity you are not dressed for. What now?',
           fact: { text: 'The "fast fashion" model encourages buying items for one-off use. Europeans use nearly 26 kg of textiles annually and discard about 11 kg.', url: "https://www.eea.europa.eu/publications/textiles-in-europes-circular-economy"},
           choices: [
             { id: 'c1', text: 'Adapt your outfit by layering versatile items you have.', score: 1 },
@@ -1113,7 +1117,7 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's3-c-6',
-          text: 'You spill a drink on your shirt. What\'s the plan?',
+          text: 'You spill a drink on your shirt. How do you manage?',
           fact: { text: "The textile industry uses over 15,000 different chemicals in dyeing and finishing processes, many of which are toxic and end up in waterways.", url: "https://www.worldbank.org/en/topic/water/brief/water-in-textiles"},
           choices: [
             { id: 'c1', text: 'Spot clean it immediately and keep wearing it.', score: 1 },
@@ -1124,7 +1128,7 @@ export const SCENARIOS: Scenario[] = [
           ],
         },
       ],
-      Digital: [
+      "Digital Life, Tools and Devices": [
         {
           id: 's3-d-1',
           text: 'How do you research potential date ideas and locations?',
@@ -1202,13 +1206,13 @@ export const SCENARIOS: Scenario[] = [
   },
    {
     id: 's4',
-    title: 'Preparing a Birthday Party',
+    title: 'The Sustainable Celebration',
     icon: 'cake',
     color: 'bg-purple-500',
-    description: "CHALLENGE: The Sustainable Celebration. It's your best friend's birthday, and you're in charge of the party. The goal: create an unforgettable celebration that’s as kind to the planet as it is fun for your guests. From eco-friendly invites to zero-waste snacks, every detail is a chance to party responsibly. Can you throw a bash that leaves nothing behind but great memories?",
+    description: "It's your best friend's birthday, and you're in charge of the party. The goal: create an unforgettable celebration that’s as kind to the planet as it is fun for your guests. From eco-friendly invites to zero-waste snacks, every detail is a chance to party responsibly. Can you throw a bash that leaves nothing behind but great memories?",
     imageUrl: 'https://storage.googleapis.com/aistudio-bucket/google-codelab-assets/climate-game/party.svg',
     questions: {
-      Mobility: [
+      "Personal Mobility": [
         {
           id: 's4-m-1',
           text: "Choosing a venue for your friend's party. What's your priority for guest arrival?",
@@ -1216,9 +1220,9 @@ export const SCENARIOS: Scenario[] = [
           choices: [
             { id: 'c1', text: 'A spot within walking or biking distance for almost everyone.', score: 1 },
             { id: 'c2', text: 'A local hall with excellent and frequent tram connections.', score: 2 },
-            { id: 'c3', text: 'A space a bit further out, but right next to a major bus interchange.', score: 3 },
+            { id: 'c3', text: 'A space a bit further out, but right next to a main bus station.', score: 3 },
             { id: 'c4', text: 'A cool bar in the suburbs, easiest to reach by car.', score: 4 },
-            { id: 'c5', text: 'A unique, upscale venue in the countryside for a special experience.', score: 5 },
+            { id: 'c5', text: 'A unique, expensive venue in the countryside for a special experience.', score: 5 },
           ],
         },
         {
@@ -1228,9 +1232,9 @@ export const SCENARIOS: Scenario[] = [
           choices: [
             { id: 'c1', text: 'Plan a fun group bike meet-up and map the route for everyone.', score: 1 },
             { id: 'c2', text: 'Include a one-day public transit pass with their invitation.', score: 2 },
-            { id: 'c3', text: 'Start a shared list in the group chat for drivers and passengers to connect.', score: 3 },
+            { id: 'c3', text: 'Start a shared list in the group chat for drivers and passengers to meet.', score: 3 },
             { id: 'c4', text: 'Just mention that parking will be very limited near the venue.', score: 4 },
-            { id: 'c5', text: 'Reassure everyone there\'s ample free parking available on site.', score: 5 },
+            { id: 'c5', text: "Reassure everyone there's ample free parking available on site.", score: 5 },
           ],
         },
         {
@@ -1239,21 +1243,21 @@ export const SCENARIOS: Scenario[] = [
           fact: { text: 'Large "big-box" stores are often located on the urban periphery, encouraging car travel and contributing to higher emissions for shopping trips.', url: "https://www.sciencedirect.com/science/article/abs/pii/S1361920915000196"},
           choices: [
             { id: 'c1', text: 'Borrow items from friends nearby and transport them by bike or foot.', score: 1 },
-            { id: 'c2', text: 'Order from a low-waste local shop and use a bike courier for pickup.', score: 2 },
+            { id: 'c2', text: 'Order from a low-waste local shop and use a bicycle delivery for pickup.', score: 2 },
             { id: 'c3', text: 'Buy what you need from the corner store and carry it home yourself.', score: 3 },
-            { id: 'c4', text: 'Take a single ride-share trip to a large party store for a big haul.', score: 4 },
+            { id: 'c4', text: 'Take a single taxi trip to a large party store for a big shopping.', score: 4 },
             { id: 'c5', text: 'Drive to a huge out-of-town supermarket to get everything in one go.', score: 5 },
           ],
         },
         {
           id: 's4-m-4',
-          text: 'How do you schedule the party\'s start time for guest convenience?',
+          text: 'How do you schedule the party start time for guest convenience?',
           fact: { text: "Public transport services are often reduced at night, increasing reliance on high-emission taxis and private cars for social activities.", url: "https://www.uitp.org/publications/night-time-mobility/"},
           choices: [
-            { id: 'c1', text: 'Saturday afternoon, during peak service frequency on main transit lines.', score: 1 },
+            { id: 'c1', text: 'Saturday afternoon, during regular service times on main transit lines.', score: 1 },
             { id: 'c2', text: 'Friday evening, when evening buses are still running, though less often.', score: 2 },
             { id: 'c3', text: 'Saturday midday, some might need to arrange specific rides.', score: 3 },
-            { id: 'c4', text: 'Late Sunday night, when direct public transport options are unavailable.', score: 4 },
+            { id: 'c4', text: 'Late Sunday night, when direct public transport is not available.', score: 4 },
             { id: 'c5', text: 'A unique weekday midnight timeslot, making driving the only option.', score: 5 },
           ],
         },
@@ -1265,7 +1269,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Book a dedicated accessible shuttle service for their round trip.', score: 1 },
             { id: 'c2', text: 'Reserve a shared accessible taxi and split the cost with the group.', score: 2 },
             { id: 'c3', text: 'Ask a friend with a suitable vehicle if they can provide a ride.', score: 3 },
-            { id: 'c4', text: 'Suggest they book a standard taxi and hope it can accommodate them.', score: 4 },
+            { id: 'c4', text: 'Suggest they book a standard taxi and hope it has space for them.', score: 4 },
             { id: 'c5', text: 'Assume they will make their own arrangements to get there.', score: 5 },
           ],
         },
@@ -1274,7 +1278,7 @@ export const SCENARIOS: Scenario[] = [
           text: 'The party is over. How do you handle cleanup and returning rentals?',
           fact: { text: "Food waste in landfills decomposes without oxygen, producing methane, a greenhouse gas over 28 times more potent than CO2 over a 100-year period.", url: "https://www.epa.gov/ghgemissions/overview-greenhouse-gases"},
           choices: [
-            { id: 'c1', text: 'Form teams to clean with reusable supplies, donate food, bike rentals back.', score: 1 },
+            { id: 'c1', text: 'Form teams to clean with reusable supplies, donate food, bike rentals back together.', score: 1 },
             { id: 'c2', text: 'Return rentals together via tram and share leftovers with neighbours.', score: 2 },
             { id: 'c3', text: 'Drive rentals back the next day and bag leftovers for disposal.', score: 3 },
             { id: 'c4', text: 'Leave leftover food and rental items for the venue staff to handle.', score: 4 },
@@ -1282,10 +1286,10 @@ export const SCENARIOS: Scenario[] = [
           ],
         },
       ],
-      Food: [
+      "Food and Dietary Habits": [
         {
           id: 's4-f-1',
-          text: 'You\'re bringing the birthday cake. What kind do you choose?',
+          text: 'You are bringing the birthday cake. What kind do you choose?',
           fact: { text: 'Local food systems shorten supply chains, reducing "food miles" and the associated CO2 emissions from transportation and refrigeration.', url: "https://www.nature.com/articles/s43016-020-0093-y"},
           choices: [
             { id: 'c1', text: 'Bake it yourself using ingredients from nearby farms.', score: 1 },
@@ -1321,7 +1325,7 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's4-f-4',
-          text: 'You\'re providing drinks. How do you source and serve them?',
+          text: 'You are providing drinks. How do you source and serve them?',
           fact: { text: "The production of aluminum cans is extremely energy-intensive, but recycling them saves 95% of the energy required to make a new one from raw materials.", url: "https://www.epa.gov/facts-and-figures-about-materials-waste-and-recycling/aluminum-material-specific-data"},
           choices: [
             { id: 'c1', text: 'Make large pitchers of homemade iced tea and lemonade.', score: 1 },
@@ -1333,7 +1337,7 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's4-f-5',
-          text: 'There\'s a lot of food left over. What\'s your plan?',
+          text: 'There is a lot of food left over. How do you handle?',
           fact: { text: "In the EU, an estimated 20% of all food produced is wasted. Preventing this waste is a key climate strategy, as it avoids all emissions from production.", url: "https://www.eea.europa.eu/publications/food-waste"},
           choices: [
             { id: 'c1', text: 'Have containers ready so guests can take portions home.', score: 1 },
@@ -1356,7 +1360,7 @@ export const SCENARIOS: Scenario[] = [
           ],
         },
       ],
-      Fashion: [
+      "Fashion and Clothing Habits": [
         {
           id: 's4-c-1',
           text: 'You want a new outfit for the party. Where do you get it?',
@@ -1430,7 +1434,7 @@ export const SCENARIOS: Scenario[] = [
           ],
         },
       ],
-      Digital: [
+      "Digital Life, Tools and Devices": [
         {
           id: 's4-d-1',
           text: 'You want to give a digital gift. How do you deliver it?',
@@ -1469,7 +1473,7 @@ export const SCENARIOS: Scenario[] = [
         },
         {
           id: 's4-d-4',
-          text: 'It\'s time to send the invitations. What\'s your method?',
+          text: 'How will you invite participants to the party?',
           fact: { text: "Online invitation services with complex tracking and RSVP features run on data centers, which have a continuous and growing energy demand.", url: "https://www.iea.org/reports/data-centres-and-data-transmission-networks"},
           choices: [
             { id: 'c1', text: 'Drop a handwritten note in the mail or deliver it in person.', score: 1 },
@@ -1508,22 +1512,22 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 's5',
-    title: 'Discovering a New Place to Travel',
+    title: 'The Conscious Adventure',
     icon: 'planet',
     color: 'bg-amber-500',
-    description: "CHALLENGE: The conscious adventure. Two weeks of freedom, a world to explore. Overtourism is overwhelming local communities, but you want your chance to discover new places. How do you experience an authentic adventure that is curious but not careless, that creates memories without exploiting destinations?",
+    description: "Two weeks of freedom, a world to explore. Overtourism is overwhelming local communities, but you want your chance to discover new places. How do you experience an authentic adventure that is curious but not careless, that creates memories without exploiting destinations?",
     imageUrl: 'https://storage.googleapis.com/aistudio-bucket/google-codelab-assets/climate-game/travel.svg',
     questions: {
-      Mobility: [
+      "Personal Mobility": [
         {
           id: 's5-m-1',
           text: 'Your dream destination is 500 km away. How do you get there?',
           fact: { text: "Aviation's non-CO2 effects (like contrails and nitrous oxide emissions) may double its warming impact compared to CO2 emissions alone.", url: "https://www.eea.europa.eu/publications/aviation-and-shipping"},
           choices: [
-            { id: 'c1', text: 'Take a direct train or coach journey.', score: 1 },
-            { id: 'c2', text: 'Organise a carpool with friends to drive there together.', score: 2 },
+            { id: 'c1', text: 'Take a direct train or bus journey.', score: 1 },
+            { id: 'c2', text: 'Organize a carpool with friends to drive there together.', score: 2 },
             { id: 'c3', text: 'Drive alone in your own car for maximum flexibility.', score: 3 },
-            { id: 'c4', text: 'Book a flight with one layover to save a little money.', score: 4 },
+            { id: 'c4', text: 'Book a flight with one connection to save a little money.', score: 4 },
             { id: 'c5', text: 'Book the fastest, most direct flight available.', score: 5 },
           ],
         },
@@ -1535,7 +1539,7 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c1', text: 'Walk or cycle to most places within the city.', score: 1 },
             { id: 'c2', text: 'Buy a pass for local trams and buses.', score: 2 },
             { id: 'c3', text: 'Use ride-share apps for longer trips across town.', score: 3 },
-            { id: 'c4', text: 'Rent an e-scooter for quick and fun point-to-point travel.', score: 4 },
+            { id: 'c4', text: 'Rent an e-scooter for quick and fun direct travel.', score: 4 },
             { id: 'c5', text: 'Rent a car for the entire two weeks for total freedom.', score: 5 },
           ],
         },
@@ -1548,19 +1552,19 @@ export const SCENARIOS: Scenario[] = [
             { id: 'c2', text: 'Take a local train or bus to the nearest town and walk.', score: 2 },
             { id: 'c3', text: 'Rent a car for just that day to see more sights.', score: 3 },
             { id: 'c4', text: 'Book a private taxi for a comfortable door-to-door trip.', score: 4 },
-            { id: 'c5', text: 'Hire a helicopter tour for a unique aerial view.', score: 5 },
+            { id: 'c5', text: 'An amazing opportunity: a friend offers you the possibility of a helicopter tour for a unique view from above.', score: 5 },
           ],
         },
         {
           id: 's5-m-4',
           text: 'You realise you forgot to pack sunscreen. How do you get it?',
-          fact: { text: "Express delivery services optimize for speed, not efficiency, often leading to partially empty vans and increased last-mile delivery emissions.", url: "https://www.itf-oecd.org/delivering-tomorrow"},
+          fact: { text: "Express delivery services are optimized for speed, not environmental efficiency, often leading to partially empty vans and increased last-mile delivery emissions.", url: "https://www.itf-oecd.org/delivering-tomorrow"},
           choices: [
             { id: 'c1', text: 'Buy a locally produced, plastic-free brand from a shop you walk past.', score: 1 },
             { id: 'c2', text: 'Go to a pharmacy near your hotel during your next outing.', score: 2 },
             { id: 'c3', text: 'Order it online with standard delivery to your accommodation.', score: 3 },
             { id: 'c4', text: 'Take a taxi to a specific large supermarket to get your favourite brand.', score: 4 },
-            { id: 'c5', text: 'Use a ride-share app to have it delivered express within the hour.', score: 5 },
+            { id: 'c5', text: 'Use a taxi app to have it delivered express within the hour.', score: 5 },
           ],
         },
         {
@@ -1582,13 +1586,13 @@ export const SCENARIOS: Scenario[] = [
           choices: [
             { id: 'c1', text: 'Choose cities connected by direct train lines.', score: 1 },
             { id: 'c2', text: 'Take overnight trains or buses to save on accommodation.', score: 2 },
-            { id: 'c3', text: 'Book regional flights between the cities for speed.', score: 3 },
+            { id: 'c3', text: 'Book flights between the cities for speed.', score: 3 },
             { id: 'c4', text: 'Rent a car and drive the entire itinerary yourself.', score: 4 },
             { id: 'c5', text: 'Book last-minute domestic flights as you decide to move on.', score: 5 },
           ],
         },
       ],
-      Food: [
+      "Food and Dietary Habits": [
         {
           id: 's5-f-1',
           text: "What's your strategy for eating during your two-week trip?",
@@ -1662,7 +1666,7 @@ export const SCENARIOS: Scenario[] = [
           ],
         },
       ],
-      Fashion: [
+      "Fashion and Clothing Habits": [
         {
           id: 's5-c-1',
           text: 'How do you plan your holiday wardrobe?',
@@ -1736,7 +1740,7 @@ export const SCENARIOS: Scenario[] = [
           ],
         },
       ],
-      Digital: [
+      "Digital Life, Tools and Devices": [
         {
           id: 's5-d-1',
           text: 'How will you navigate the new city?',
